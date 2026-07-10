@@ -1,0 +1,52 @@
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f0f2f5;
+  --bg-chat: #e8f4fd;
+  --bg-message-sent: #efffde;
+  --bg-message-received: #ffffff;
+  --bg-input: #ffffff;
+  --bg-hover: #f0f2f5;
+  --bg-active: #e8f4fd;
+  --text-primary: #111b21;
+  --text-secondary: #667781;
+  --text-message: #111b21;
+  --text-time: #8696a0;
+  --border-color: #e9edef;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-lg: 0 2px 8px rgba(0,0,0,0.12);
+  --accent: #2b5278;
+  --accent-light: #6ab2f2;
+  --danger: #ef5350;
+  --success: #4caf50;
+  --warning: #ff9800;
+  --online: #4caf50;
+  --typing: #4caf50;
+  --unread-badge: #25d366;
+  --avatar-bg: #2b5278;
+  --avatar-text: #ffffff;
+  --scrollbar-thumb: #c1c7cd;
+  --scrollbar-track: transparent;
+  --skeleton: linear-gradient(90deg, #f0f2f5 25%, #e0e3e7 50%, #f0f2f5 75%);
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+[data-theme="dark"] {
+  --bg-primary: #111b21;
+  --bg-secondary: #17212b;
+  --bg-chat: #0b141a;
+  --bg-message-sent: #2b5278;
+  --bg-message-received: #1f2c38;
+  --bg-input: #1f2c38;
+  --bg-hover: #1f2c38;
+  --bg-active: #2b5278;
+  --text-primary: #e9edef;
+  --text-secondary: #8696a0;
+  --text-message: #e9edef;
+  --text-time: #8696a0;
+  --border-color: #1f2c38;
+  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-lg: 0 2px 8px rgba(0,0,0,0.4);
+  --scrollbar-thumb: #2b5278;
+  --scrollbar-track: transparent;
+  --skeleton: linear-gradient(90deg, #1f2c38 25%, #2b5278 50%, #1f2c38 75%);
+}

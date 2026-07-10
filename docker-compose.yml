@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  signal-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_SIGNAL_URL: ${VITE_SIGNAL_URL:-ws://localhost:3001}
+    ports:
+      - "80:80"
+    depends_on:
+      - signal-server
+    restart: unless-stopped

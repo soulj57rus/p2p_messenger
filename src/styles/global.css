@@ -1,0 +1,58 @@
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+@import './variables.css';
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body, #app {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  font-family: var(--font-family);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+
+a { color: var(--accent-light); text-decoration: none; }
+
+.skeleton {
+  background: var(--skeleton);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes typing { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+
+.fade-in { animation: fadeIn 0.2s ease-out; }
+.slide-in { animation: slideIn 0.2s ease-out; }
+
+@media (max-width: 768px) {
+  .chat-list-panel {
+    width: 100% !important;
+    min-width: 100% !important;
+  }
+  .back-button {
+    display: inline-flex !important;
+  }
+  audio { width: 140px !important; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg-primary: #111b21; --bg-secondary: #17212b; --bg-chat: #0b141a; --bg-message-sent: #2b5278; --bg-message-received: #1f2c38; --bg-input: #1f2c38; --bg-hover: #1f2c38; --bg-active: #2b5278; --text-primary: #e9edef; --text-secondary: #8696a0; --text-message: #e9edef; --text-time: #8696a0; --border-color: #1f2c38; --shadow: 0 1px 3px rgba(0,0,0,0.3); --shadow-lg: 0 2px 8px rgba(0,0,0,0.4); --scrollbar-thumb: #2b5278; --scrollbar-track: transparent; --skeleton: linear-gradient(90deg, #1f2c38 25%, #2b5278 50%, #1f2c38 75%); }
+}
