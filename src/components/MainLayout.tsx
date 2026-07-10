@@ -68,6 +68,7 @@ export function MainLayout() {
     for (const chat of storeChats) {
       if (onlinePeers.includes(chat.peerId)) {
         initiateConnection(chat.peerId);
+        useStore.getState().flushPendingMessages(chat.peerId);
       }
     }
   }, [onlinePeers]);

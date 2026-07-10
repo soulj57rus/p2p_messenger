@@ -107,7 +107,7 @@ export function ChatView({ chatId, onBack, isMobile }: Props) {
         background: 'var(--bg-secondary)',
       }}>
         <button onClick={onBack} style={{
-          display: isMobile ? 'inline-flex' : 'none', background: 'none', border: 'none', cursor: 'pointer',
+          display: 'inline-flex', background: 'none', border: 'none', cursor: 'pointer',
           color: 'var(--text-primary)', fontSize: 18, padding: 4,
         }}>
           <i class="fas fa-arrow-left" />
@@ -141,7 +141,7 @@ export function ChatView({ chatId, onBack, isMobile }: Props) {
               </span>
             </div>
             {group.messages.map(msg => (
-              <div key={msg.id} class="fade-in" style={{
+              <div key={msg.id} style={{
                 display: 'flex', justifyContent: msg.senderId === myId ? 'flex-end' : 'flex-start',
                 marginBottom: 4,
               }}>
@@ -201,8 +201,12 @@ export function ChatView({ chatId, onBack, isMobile }: Props) {
                   }}>
                     <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     {msg.senderId === myId && (
-                      <i class={`fas fa-check${msg.read ? '-double' : ''}`}
-                        style={{ color: msg.read ? 'var(--accent-light)' : 'var(--text-time)', fontSize: 10 }} />
+                      msg.pending ? (
+                        <i class="fas fa-clock" style={{ color: 'var(--text-time)', fontSize: 10 }} title="Ожидает доставки" />
+                      ) : (
+                        <i class={`fas fa-check${msg.read ? '-double' : ''}`}
+                          style={{ color: msg.read ? 'var(--accent-light)' : 'var(--text-time)', fontSize: 10 }} />
+                      )
                     )}
                   </div>
                 </div>

@@ -47,9 +47,6 @@ a { color: var(--accent-light); text-decoration: none; }
     width: 100% !important;
     min-width: 100% !important;
   }
-  .back-button {
-    display: inline-flex !important;
-  }
   audio { width: 140px !important; }
 }
 

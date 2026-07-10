@@ -10,6 +10,7 @@ export interface Message {
   timestamp: number;
   read: boolean;
   delivered: boolean;
+  pending?: boolean;
   selfDestruct?: number;
   encrypted?: boolean;
   replyTo?: number;
@@ -41,8 +42,8 @@ class MessengerDB extends Dexie {
 
   constructor() {
     super('P2PMessenger');
-    this.version(1).stores({
-      messages: '++id, chatId, timestamp',
+    this.version(2).stores({
+      messages: '++id, chatId, timestamp, pending',
       chats: 'id, peerId, lastMessageTime',
       keys: 'id',
     });

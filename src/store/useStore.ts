@@ -34,6 +34,7 @@ interface PeerStore {
   sendFileMessage: (peerId: string, file: File) => Promise<void>;
   sendVoiceMessage: (peerId: string, blob: Blob) => Promise<void>;
   sendVideoMessage: (peerId: string, blob: Blob) => Promise<void>;
+  flushPendingMessages: (peerId: string) => Promise<void>;
 
   handleIncomingMessage: (peerId: string, data: any) => Promise<void>;
   handleRelayMessage: (peerId: string, data: any) => void;
@@ -126,12 +127,16 @@ export const useStore = create<PeerStore>((set, get) => ({
       timestamp: Date.now(),
       read: false,
       delivered: false,
+      pending: true,
       replyTo,
     };
     const id = await db.messages.add(msg as Message);
 
     if (sendMessageToPeer) {
-      sendMessageToPeer(peerId, { type: 'text', content: text, timestamp: msg.timestamp, id, replyTo });
+      const sent = sendMessageToPeer(peerId, { type: 'text', content: text, timestamp: msg.timestamp, id, replyTo });
+      if (sent) {
+        await db.messages.update(id!, { pending: false });
+      }
     }
 
     await db.chats.update(peerId, { lastMessage: text, lastMessageTime: msg.timestamp });
@@ -170,8 +175,33 @@ export const useStore = create<PeerStore>((set, get) => ({
   },
 
   sendVideoMessage: async (peerId, blob) => {
-    const file = new File([blob], `video_${Date.now()}.webm`, { type: 'video/webm' });
+    const file = new File([blob], `video_${Date.now()}.webm`, { type: 'audio/webm' });
     return get().sendFileMessage(peerId, file);
+  },
+
+  flushPendingMessages: async (peerId) => {
+    const pending = await db.messages.where({ chatId: peerId, pending: true }).toArray();
+    if (!pending.length || !sendMessageToPeer) return;
+
+    for (const msg of pending) {
+      let payload: any;
+      if (msg.contentType === 'text') {
+        payload = { type: 'text', content: msg.content, timestamp: msg.timestamp, id: msg.id, replyTo: msg.replyTo };
+      } else if (msg.fileData) {
+        payload = {
+          type: 'file', name: msg.fileData.name, size: msg.fileData.size,
+          mimeType: msg.fileData.mimeType, data: Array.from(new Uint8Array(msg.fileData.data)),
+          timestamp: msg.timestamp, id: msg.id,
+        };
+      } else {
+        continue;
+      }
+
+      const sent = sendMessageToPeer(peerId, payload);
+      if (sent) {
+        await db.messages.update(msg.id!, { pending: false, delivered: true });
+      }
+    }
   },
 
   handleIncomingMessage: async (peerId, data) => {
