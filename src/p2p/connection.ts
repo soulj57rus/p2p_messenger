@@ -137,6 +137,9 @@ export async function initiateConnection(peerId: string) {
     console.log(`[ICE] State with ${peerId.slice(0, 16)}...: ${pc.connectionState}`);
     if (pc.connectionState === 'failed') {
       cleanupConnection(peerId);
+      scheduleReconnect(peerId);
+    } else if (pc.connectionState === 'connected') {
+      reconnectAttempts.delete(peerId);
     }
   };
 
@@ -175,6 +178,9 @@ async function handleOffer(from: string, data: any) {
     console.log(`[ICE] State with ${from.slice(0, 16)}...: ${pc.connectionState}`);
     if (pc.connectionState === 'failed') {
       cleanupConnection(from);
+      scheduleReconnect(from);
+    } else if (pc.connectionState === 'connected') {
+      reconnectAttempts.delete(from);
     }
   };
 
@@ -250,8 +256,33 @@ export function sendMessage(peerId: string, data: any) {
     dc.send(JSON.stringify(data));
     return true;
   }
-  console.warn(`[DC] Channel not open for ${peerId.slice(0, 16)}... (state: ${dc?.readyState ?? 'none'})`);
+
+  if (ws?.readyState === WebSocket.OPEN && myPeerId) {
+    console.log(`[RELAY] Fallback to server for ${peerId.slice(0, 16)}...`);
+    ws.send(JSON.stringify({ type: 'relay', to: peerId, data }));
+    return true;
+  }
+
+  console.warn(`[DC] No channel and no WS for ${peerId.slice(0, 16)}...`);
   return false;
+}
+
+const reconnectAttempts = new Map<string, number>();
+
+function scheduleReconnect(peerId: string) {
+  const attempts = reconnectAttempts.get(peerId) || 0;
+  if (attempts >= 10) {
+    console.warn(`[ICE] Giving up reconnect to ${peerId.slice(0, 16)}... after ${attempts} attempts`);
+    return;
+  }
+  reconnectAttempts.set(peerId, attempts + 1);
+  const delay = Math.min(1000 * Math.pow(2, attempts), 30000);
+  console.log(`[ICE] Reconnecting to ${peerId.slice(0, 16)}... in ${delay}ms (attempt ${attempts + 1})`);
+  setTimeout(() => {
+    peerConnections.delete(peerId);
+    dataChannels.delete(peerId);
+    initiateConnection(peerId);
+  }, delay);
 }
 
 function cleanupConnection(peerId: string) {
