@@ -59,11 +59,11 @@ export function MainLayout() {
 
   useEffect(() => {
     for (const chat of storeChats) {
-      if (onlinePeers.includes(chat.peerId) && !activeChat) {
+      if (onlinePeers.includes(chat.peerId)) {
         initiateConnection(chat.peerId);
       }
     }
-  }, [onlinePeers, storeChats]);
+  }, [onlinePeers]);
 
   const handleSelectChat = (peerId: string) => {
     setActiveChat(peerId);
@@ -88,7 +88,7 @@ export function MainLayout() {
         transition: 'width 0.2s, min-width 0.2s',
         display: 'flex', flexDirection: 'column',
       }}>
-        <ChatList />
+        <ChatList onSelectChat={handleSelectChat} />
       </div>
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-chat)' }}>

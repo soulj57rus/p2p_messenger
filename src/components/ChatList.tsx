@@ -4,7 +4,7 @@ import { type Chat } from '@/db';
 import { exportKeyPair } from '@/crypto/keys';
 import QRCode from 'qrcode';
 
-export function ChatList() {
+export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => void }) {
   const myId = useStore((s) => s.myId);
   const activeChat = useStore((s) => s.activeChat);
   const setActiveChat = useStore((s) => s.setActiveChat);
@@ -172,7 +172,7 @@ export function ChatList() {
           storeChats.map(chat => (
             <div
               key={chat.id}
-              onClick={() => setActiveChat(chat.peerId)}
+              onClick={() => onSelectChat ? onSelectChat(chat.peerId) : setActiveChat(chat.peerId)}
               style={{
                 padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12,
                 cursor: 'pointer', background: chat.peerId === activeChat ? 'var(--bg-active)' : 'transparent',

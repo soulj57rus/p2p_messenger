@@ -22,11 +22,11 @@ export function App() {
     (async () => {
       try {
         const hasKeys = await loadKeys();
-        if (!hasKeys) {
-          setLoading(false);
-          return;
-        }
         setLoading(false);
+        if (hasKeys) {
+          const id = useStore.getState().myId;
+          if (id) connectToSignal(id);
+        }
       } catch (e) {
         setInitError('Failed to load keys');
         setLoading(false);
