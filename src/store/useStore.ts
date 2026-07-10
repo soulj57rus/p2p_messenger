@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { db, type Message, type Chat } from '@/db';
 import { generateKeyPair, publicKeyToId, idToPublicKey, encryptMessage, decryptMessage, signMessage } from '@/crypto/keys';
 
-let sendMessageToPeer: ((peerId: string, data: any) => boolean) | null = null;
+let sendMessageToPeer: ((peerId: string, data: any) => 'direct' | 'relay' | 'none') | null = null;
 
 export function setSendMessage(fn: typeof sendMessageToPeer) {
   sendMessageToPeer = fn;
@@ -133,8 +133,8 @@ export const useStore = create<PeerStore>((set, get) => ({
     const id = await db.messages.add(msg as Message);
 
     if (sendMessageToPeer) {
-      const sent = sendMessageToPeer(peerId, { type: 'text', content: text, timestamp: msg.timestamp, id, replyTo });
-      if (sent) {
+      const result = sendMessageToPeer(peerId, { type: 'text', content: text, timestamp: msg.timestamp, id, replyTo });
+      if (result === 'direct') {
         await db.messages.update(id!, { pending: false });
       }
     }
@@ -197,8 +197,8 @@ export const useStore = create<PeerStore>((set, get) => ({
         continue;
       }
 
-      const sent = sendMessageToPeer(peerId, payload);
-      if (sent) {
+      const result = sendMessageToPeer(peerId, payload);
+      if (result !== 'none') {
         await db.messages.update(msg.id!, { pending: false, delivered: true });
       }
     }
@@ -252,7 +252,9 @@ export const useStore = create<PeerStore>((set, get) => ({
   },
 
   markAsRead: async (chatId) => {
-    await db.messages.where({ chatId }).modify({ read: true });
+    const { myId } = get();
+    if (!myId) return;
+    await db.messages.where({ chatId }).and(msg => msg.senderId !== myId).modify({ read: true });
     await db.chats.update(chatId, { unread: 0 });
   },
 

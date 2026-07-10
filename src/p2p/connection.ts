@@ -250,21 +250,21 @@ function setupDataChannel(dc: RTCDataChannel, peerId: string) {
   };
 }
 
-export function sendMessage(peerId: string, data: any) {
+export function sendMessage(peerId: string, data: any): 'direct' | 'relay' | 'none' {
   const dc = dataChannels.get(peerId);
   if (dc?.readyState === 'open') {
     dc.send(JSON.stringify(data));
-    return true;
+    return 'direct';
   }
 
   if (ws?.readyState === WebSocket.OPEN && myPeerId) {
     console.log(`[RELAY] Fallback to server for ${peerId.slice(0, 16)}...`);
     ws.send(JSON.stringify({ type: 'relay', to: peerId, data }));
-    return true;
+    return 'relay';
   }
 
   console.warn(`[DC] No channel and no WS for ${peerId.slice(0, 16)}...`);
-  return false;
+  return 'none';
 }
 
 const reconnectAttempts = new Map<string, number>();
