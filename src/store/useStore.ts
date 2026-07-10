@@ -181,7 +181,17 @@ export const useStore = create<PeerStore>((set, get) => ({
 
   flushPendingMessages: async (peerId) => {
     const pending = await db.messages.where({ chatId: peerId, pending: true }).toArray();
-    if (!pending.length || !sendMessageToPeer) return;
+    if (!pending.length) return;
+
+    if (!sendMessageToPeer) {
+      const { myId } = get();
+      if (myId) {
+        const { connectToSignal } = await import('@/p2p/connection');
+        connectToSignal(myId);
+      }
+    }
+
+    if (!sendMessageToPeer) return;
 
     for (const msg of pending) {
       let payload: any;
@@ -197,9 +207,13 @@ export const useStore = create<PeerStore>((set, get) => ({
         continue;
       }
 
-      const result = sendMessageToPeer(peerId, payload);
-      if (result !== 'none') {
-        await db.messages.update(msg.id!, { pending: false, delivered: true });
+      try {
+        const result = sendMessageToPeer(peerId, payload);
+        if (result !== 'none') {
+          await db.messages.update(msg.id!, { pending: false, delivered: result === 'direct' });
+        }
+      } catch (e) {
+        console.error('[FLUSH] Failed to send:', e);
       }
     }
   },

@@ -18,6 +18,13 @@ export function MainLayout() {
   const processedInvite = useRef(false);
 
   useEffect(() => {
+    const saved = localStorage.getItem('activeChat');
+    if (saved) {
+      setActiveChat(saved);
+    }
+  }, []);
+
+  useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -61,7 +68,12 @@ export function MainLayout() {
   }, []);
 
   useEffect(() => {
-    if (activeChat) setMobileView('chat');
+    if (activeChat) {
+      setMobileView('chat');
+      localStorage.setItem('activeChat', activeChat);
+    } else {
+      localStorage.removeItem('activeChat');
+    }
   }, [activeChat]);
 
   useEffect(() => {
@@ -73,9 +85,23 @@ export function MainLayout() {
     }
   }, [onlinePeers]);
 
+  useEffect(() => {
+    const flushAll = async () => {
+      const state = useStore.getState();
+      for (const chat of state.chats) {
+        if (state.onlinePeers.includes(chat.peerId)) {
+          await state.flushPendingMessages(chat.peerId);
+        }
+      }
+    };
+    const id = setInterval(flushAll, 5000);
+    return () => clearInterval(id);
+  }, []);
+
   const handleSelectChat = (peerId: string) => {
     setActiveChat(peerId);
     if (onlinePeers.includes(peerId)) initiateConnection(peerId);
+    useStore.getState().flushPendingMessages(peerId);
   };
 
   const handleBack = () => {

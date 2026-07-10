@@ -48,6 +48,12 @@ export function connectToSignal(peerId: string) {
     console.log('[WS] Connected to signaling server');
     ws!.send(JSON.stringify({ type: 'register', peerId }));
     if (reconnectTimer) { clearInterval(reconnectTimer); reconnectTimer = null; }
+    setTimeout(async () => {
+      const state = useStore.getState();
+      for (const chat of state.chats) {
+        await state.flushPendingMessages(chat.peerId);
+      }
+    }, 500);
   };
 
   ws.onmessage = (event) => {
