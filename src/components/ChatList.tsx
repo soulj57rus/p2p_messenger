@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useState, useRef } from 'preact/hooks';
 import { useStore } from '@/store/useStore';
 import { type Chat } from '@/db';
 import { exportKeyPair } from '@/crypto/keys';
+import QRCode from 'qrcode';
 
 export function ChatList() {
   const myId = useStore((s) => s.myId);
@@ -14,6 +15,9 @@ export function ChatList() {
   const [addPeerInput, setAddPeerInput] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [exportedKey, setExportedKey] = useState('');
+  const [qrDataUrl, setQrDataUrl] = useState('');
+  const [copied, setCopied] = useState('');
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     if (myKeyPair) {
@@ -21,15 +25,26 @@ export function ChatList() {
     }
   }, [myKeyPair]);
 
+  useEffect(() => {
+    if (showSettings && myId) {
+      const inviteUrl = `${window.location.origin}${window.location.pathname}?add=${myId}`;
+      QRCode.toDataURL(inviteUrl, { width: 180, margin: 2, color: { dark: '#ffffff', light: '#00000000' } })
+        .then(setQrDataUrl)
+        .catch(() => {});
+    }
+  }, [showSettings, myId]);
+
+  const handleCopy = async (text: string, label: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopied(label);
+    setTimeout(() => setCopied(''), 2000);
+  };
+
   const handleAddPeer = async () => {
     if (!addPeerInput.trim()) return;
     const peerId = addPeerInput.trim();
     await createChat(peerId, peerId.slice(0, 16) + '...');
     setAddPeerInput('');
-  };
-
-  const handleCopyKey = () => {
-    navigator.clipboard.writeText(exportedKey);
   };
 
   return (
@@ -68,36 +83,55 @@ export function ChatList() {
       {/* Settings panel */}
       {showSettings && (
         <div style={{ padding: 16, borderBottom: '1px solid var(--border-color)', fontSize: 13 }}>
+          {qrDataUrl && (
+            <div style={{ textAlign: 'center', marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 8 }}>Отсканируйте или отправьте ссылку</div>
+              <img src={qrDataUrl} alt="QR" style={{ width: 180, height: 180, borderRadius: 12, background: 'var(--bg-input)' }} />
+            </div>
+          )}
           <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>Ваш публичный ключ (ID)</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Ваш ID</span>
+              <button onClick={() => {
+                const inviteUrl = `${window.location.origin}${window.location.pathname}?add=${myId}`;
+                handleCopy(inviteUrl, 'link');
+              }} style={{
+                background: 'none', border: 'none', color: copied === 'link' ? 'var(--online)' : 'var(--accent)',
+                fontSize: 11, cursor: 'pointer', padding: 0,
+              }}>
+                {copied === 'link' ? 'Скопировано!' : 'Копировать ссылку'}
+              </button>
+            </div>
             <div style={{
               padding: 8, borderRadius: 6, background: 'var(--bg-input)',
               fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-all',
-              maxHeight: 60, overflow: 'auto',
-              color: 'var(--text-primary)',
+              maxHeight: 60, overflow: 'auto', color: 'var(--text-primary)',
             }}>
               {myId}
             </div>
           </div>
           <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>Приватный ключ (для импорта)</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Приватный ключ</span>
+              <button onClick={() => handleCopy(exportedKey, 'key')} style={{
+                background: 'none', border: 'none', color: copied === 'key' ? 'var(--online)' : 'var(--accent)',
+                fontSize: 11, cursor: 'pointer', padding: 0,
+              }}>
+                {copied === 'key' ? 'Скопировано!' : 'Копировать'}
+              </button>
+            </div>
             <textarea readOnly value={exportedKey}
               style={{
-                width: '100%', height: 60, padding: 8, borderRadius: 6,
+                width: '100%', height: 50, padding: 8, borderRadius: 6,
                 border: '1px solid var(--border-color)',
                 background: 'var(--bg-input)', color: 'var(--text-primary)',
                 fontFamily: 'monospace', fontSize: 10, resize: 'none',
               }}
             />
+            <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 4 }}>
+              Сохраните этот ключ для восстановления аккаунта
+            </div>
           </div>
-          <button onClick={handleCopyKey}
-            style={{
-              padding: '6px 16px', borderRadius: 6, border: 'none',
-              background: 'var(--accent)', color: '#fff', fontSize: 12, cursor: 'pointer',
-            }}
-          >
-            Копировать ключ
-          </button>
         </div>
       )}
 

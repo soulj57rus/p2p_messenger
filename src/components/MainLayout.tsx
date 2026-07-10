@@ -2,7 +2,7 @@ import { useStore } from '@/store/useStore';
 import { ChatList } from './ChatList';
 import { ChatView } from './ChatView';
 import { WelcomeScreen } from './WelcomeScreen';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useState, useRef } from 'preact/hooks';
 import { db } from '@/db';
 import { initiateConnection } from '@/p2p/connection';
 
@@ -12,7 +12,9 @@ export function MainLayout() {
   const onlinePeers = useStore((s) => s.onlinePeers);
   const storeChats = useStore((s) => s.chats);
   const setChats = useStore((s) => s.setChats);
+  const createChat = useStore((s) => s.createChat);
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
+  const processedInvite = useRef(false);
 
   useEffect(() => {
     const load = async () => {
@@ -22,6 +24,21 @@ export function MainLayout() {
     load();
     const id = setInterval(load, 2000);
     return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (processedInvite.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const addPeer = params.get('add');
+    if (addPeer && addPeer.trim()) {
+      processedInvite.current = true;
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, '', cleanUrl);
+      (async () => {
+        await createChat(addPeer.trim(), addPeer.trim().slice(0, 16) + '...');
+        setActiveChat(addPeer.trim());
+      })();
+    }
   }, []);
 
   useEffect(() => {
@@ -39,6 +56,14 @@ export function MainLayout() {
   useEffect(() => {
     if (activeChat) setMobileView('chat');
   }, [activeChat]);
+
+  useEffect(() => {
+    for (const chat of storeChats) {
+      if (onlinePeers.includes(chat.peerId) && !activeChat) {
+        initiateConnection(chat.peerId);
+      }
+    }
+  }, [onlinePeers, storeChats]);
 
   const handleSelectChat = (peerId: string) => {
     setActiveChat(peerId);

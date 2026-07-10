@@ -3,6 +3,28 @@ import { publicKeyToId } from '@/crypto/keys';
 
 const SIGNAL_URL = import.meta.env.VITE_SIGNAL_URL || 'ws://localhost:3001';
 
+const ICE_SERVERS: RTCIceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:openrelay.metered.ca:80' },
+  {
+    urls: 'turn:openrelay.metered.ca:80',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+];
+
 let ws: WebSocket | null = null;
 const peerConnections = new Map<string, RTCPeerConnection>();
 const dataChannels = new Map<string, RTCDataChannel>();
@@ -87,7 +109,7 @@ function sendSignal(data: any) {
 export async function initiateConnection(peerId: string) {
   if (peerConnections.has(peerId)) return;
 
-  const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
   peerConnections.set(peerId, pc);
 
   const dc = pc.createDataChannel('chat', { ordered: true });
@@ -119,7 +141,7 @@ export async function initiateConnection(peerId: string) {
 }
 
 async function handleOffer(from: string, data: any) {
-  const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
   peerConnections.set(from, pc);
 
   pc.onicecandidate = (e) => {
