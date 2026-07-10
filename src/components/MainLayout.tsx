@@ -14,7 +14,14 @@ export function MainLayout() {
   const setChats = useStore((s) => s.setChats);
   const createChat = useStore((s) => s.createChat);
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const processedInvite = useRef(false);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -93,7 +100,7 @@ export function MainLayout() {
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-chat)' }}>
         {activeChat ? (
-          <ChatView chatId={activeChat} onBack={handleBack} />
+          <ChatView chatId={activeChat} onBack={handleBack} isMobile={isMobile} />
         ) : (
           <WelcomeScreen />
         )}

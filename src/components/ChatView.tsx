@@ -5,9 +5,10 @@ import { db, type Message } from '@/db';
 interface Props {
   chatId: string;
   onBack: () => void;
+  isMobile: boolean;
 }
 
-export function ChatView({ chatId, onBack }: Props) {
+export function ChatView({ chatId, onBack, isMobile }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [chatName, setChatName] = useState('');
@@ -106,9 +107,9 @@ export function ChatView({ chatId, onBack }: Props) {
         background: 'var(--bg-secondary)',
       }}>
         <button onClick={onBack} style={{
-          display: 'none', background: 'none', border: 'none', cursor: 'pointer',
+          display: isMobile ? 'inline-flex' : 'none', background: 'none', border: 'none', cursor: 'pointer',
           color: 'var(--text-primary)', fontSize: 18, padding: 4,
-        }} className="back-button">
+        }}>
           <i class="fas fa-arrow-left" />
         </button>
         <div style={{

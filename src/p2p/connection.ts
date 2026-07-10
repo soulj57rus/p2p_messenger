@@ -1,5 +1,4 @@
 import { useStore, setSendMessage } from '@/store/useStore';
-import { publicKeyToId } from '@/crypto/keys';
 
 const SIGNAL_URL = import.meta.env.VITE_SIGNAL_URL || 'ws://localhost:3001';
 
@@ -26,15 +25,22 @@ const ICE_SERVERS: RTCIceServer[] = [
 ];
 
 let ws: WebSocket | null = null;
+let myPeerId: string | null = null;
 const peerConnections = new Map<string, RTCPeerConnection>();
 const dataChannels = new Map<string, RTCDataChannel>();
 const pendingCandidates = new Map<string, RTCIceCandidate[]>();
 
 let reconnectTimer: any = null;
 
+function shouldInitiate(remoteId: string): boolean {
+  if (!myPeerId) return false;
+  return myPeerId < remoteId;
+}
+
 export function connectToSignal(peerId: string) {
+  myPeerId = peerId;
   setSendMessage(sendMessage);
-  if (ws && ws.readyState === WebSocket.OPEN) return;
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
 
   ws = new WebSocket(SIGNAL_URL);
 
@@ -107,8 +113,10 @@ function sendSignal(data: any) {
 }
 
 export async function initiateConnection(peerId: string) {
+  if (!shouldInitiate(peerId)) return;
   if (peerConnections.has(peerId)) return;
 
+  console.log(`[ICE] Initiating connection to ${peerId.slice(0, 16)}...`);
   const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
   peerConnections.set(peerId, pc);
 
@@ -126,7 +134,8 @@ export async function initiateConnection(peerId: string) {
   };
 
   pc.onconnectionstatechange = () => {
-    if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+    console.log(`[ICE] State with ${peerId.slice(0, 16)}...: ${pc.connectionState}`);
+    if (pc.connectionState === 'failed') {
       cleanupConnection(peerId);
     }
   };
@@ -135,12 +144,22 @@ export async function initiateConnection(peerId: string) {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     sendSignal({ type: 'offer', to: peerId, data: pc.localDescription?.toJSON() });
+    console.log(`[ICE] Offer sent to ${peerId.slice(0, 16)}...`);
   } catch (e) {
     console.error('[ICE] Offer error:', e);
   }
 }
 
 async function handleOffer(from: string, data: any) {
+  console.log(`[ICE] Received offer from ${from.slice(0, 16)}...`);
+
+  const existingPc = peerConnections.get(from);
+  if (existingPc) {
+    existingPc.close();
+    peerConnections.delete(from);
+    dataChannels.delete(from);
+  }
+
   const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
   peerConnections.set(from, pc);
 
@@ -153,7 +172,8 @@ async function handleOffer(from: string, data: any) {
   pc.ondatachannel = (e) => setupDataChannel(e.channel, from);
 
   pc.onconnectionstatechange = () => {
-    if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+    console.log(`[ICE] State with ${from.slice(0, 16)}...: ${pc.connectionState}`);
+    if (pc.connectionState === 'failed') {
       cleanupConnection(from);
     }
   };
@@ -162,6 +182,7 @@ async function handleOffer(from: string, data: any) {
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
   sendSignal({ type: 'answer', to: from, data: pc.localDescription?.toJSON() });
+  console.log(`[ICE] Answer sent to ${from.slice(0, 16)}...`);
 
   const pendings = pendingCandidates.get(from) || [];
   for (const c of pendings) {
@@ -173,6 +194,7 @@ async function handleOffer(from: string, data: any) {
 async function handleAnswer(from: string, data: any) {
   const pc = peerConnections.get(from);
   if (!pc) return;
+  console.log(`[ICE] Received answer from ${from.slice(0, 16)}...`);
   await pc.setRemoteDescription(new RTCSessionDescription(data));
   const pendings = pendingCandidates.get(from) || [];
   for (const c of pendings) {
@@ -195,16 +217,21 @@ async function handleIceCandidate(from: string, data: any) {
 }
 
 function setupDataChannel(dc: RTCDataChannel, peerId: string) {
+  console.log(`[DC] Setting up channel with ${peerId.slice(0, 16)}... (state: ${dc.readyState})`);
   dataChannels.set(peerId, dc);
 
   dc.onopen = () => {
-    console.log(`[DC] Open with ${peerId.slice(0, 16)}...`);
+    console.log(`[DC] OPEN with ${peerId.slice(0, 16)}...`);
     useStore.getState().setPeerOnline(peerId, true);
   };
 
   dc.onclose = () => {
-    console.log(`[DC] Close with ${peerId.slice(0, 16)}...`);
-    cleanupConnection(peerId);
+    console.log(`[DC] CLOSE with ${peerId.slice(0, 16)}...`);
+    dataChannels.delete(peerId);
+  };
+
+  dc.onerror = (e) => {
+    console.error(`[DC] ERROR with ${peerId.slice(0, 16)}...`, e);
   };
 
   dc.onmessage = (e) => {
@@ -223,6 +250,7 @@ export function sendMessage(peerId: string, data: any) {
     dc.send(JSON.stringify(data));
     return true;
   }
+  console.warn(`[DC] Channel not open for ${peerId.slice(0, 16)}... (state: ${dc?.readyState ?? 'none'})`);
   return false;
 }
 
@@ -233,7 +261,6 @@ function cleanupConnection(peerId: string) {
     pc.close();
     peerConnections.delete(peerId);
   }
-  useStore.getState().setPeerOnline(peerId, false);
 }
 
 export function disconnectAll() {
