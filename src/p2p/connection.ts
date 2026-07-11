@@ -31,6 +31,7 @@ const dataChannels = new Map<string, RTCDataChannel>();
 const pendingCandidates = new Map<string, RTCIceCandidate[]>();
 
 let reconnectTimer: any = null;
+let pendingUsernameResolve: ((msg: any) => void) | null = null;
 
 function shouldInitiate(remoteId: string): boolean {
   if (!myPeerId) return false;
@@ -46,7 +47,8 @@ export function connectToSignal(peerId: string) {
 
   ws.onopen = () => {
     console.log('[WS] Connected to signaling server');
-    ws!.send(JSON.stringify({ type: 'register', peerId }));
+    const store = useStore.getState();
+    ws!.send(JSON.stringify({ type: 'register', peerId, username: store.myUsername }));
     if (reconnectTimer) { clearInterval(reconnectTimer); reconnectTimer = null; }
     setTimeout(async () => {
       const state = useStore.getState();
@@ -79,19 +81,40 @@ function handleSignalMessage(msg: any) {
   switch (msg.type) {
     case 'registered':
       store.setOnline(true);
+      if (msg.username) store.setMyUsername(msg.username);
       break;
 
     case 'online_peers':
       store.setOnlinePeers(msg.peers);
+      if (msg.usernames) store.setPeerUsernames(msg.usernames);
       break;
 
     case 'peer_online': {
       store.addOnlinePeer(msg.peerId);
+      if (msg.username) store.setPeerUsername(msg.peerId, msg.username);
       break;
     }
 
     case 'peer_offline':
       store.removeOnlinePeer(msg.peerId);
+      break;
+
+    case 'username_result':
+      if (pendingUsernameResolve) {
+        pendingUsernameResolve(msg);
+        pendingUsernameResolve = null;
+      }
+      break;
+
+    case 'username_resolved':
+      if (pendingUsernameResolve) {
+        pendingUsernameResolve(msg);
+        pendingUsernameResolve = null;
+      }
+      break;
+
+    case 'username_changed':
+      if (msg.peerId) store.setPeerUsername(msg.peerId, msg.username);
       break;
 
     case 'offer':
@@ -303,4 +326,42 @@ function cleanupConnection(peerId: string) {
 export function disconnectAll() {
   for (const [id] of peerConnections) cleanupConnection(id);
   if (ws) { ws.close(); ws = null; }
+}
+
+export function sendSetUsername(username: string): Promise<{ ok: boolean; username?: string; error?: string }> {
+  return new Promise((resolve) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      resolve({ ok: false, error: 'Нет подключения к серверу' });
+      return;
+    }
+    pendingUsernameResolve = (msg) => {
+      resolve({ ok: msg.ok, username: msg.username, error: msg.error });
+    };
+    ws.send(JSON.stringify({ type: 'set_username', username }));
+    setTimeout(() => {
+      if (pendingUsernameResolve) {
+        pendingUsernameResolve = null;
+        resolve({ ok: false, error: 'Таймаут сервера' });
+      }
+    }, 5000);
+  });
+}
+
+export function sendResolveUsername(username: string): Promise<{ peerId: string | null; error?: string }> {
+  return new Promise((resolve) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      resolve({ peerId: null, error: 'Нет подключения к серверу' });
+      return;
+    }
+    pendingUsernameResolve = (msg) => {
+      resolve({ peerId: msg.peerId, error: msg.error });
+    };
+    ws.send(JSON.stringify({ type: 'resolve_username', username }));
+    setTimeout(() => {
+      if (pendingUsernameResolve) {
+        pendingUsernameResolve = null;
+        resolve({ peerId: null, error: 'Таймаут сервера' });
+      }
+    }, 5000);
+  });
 }

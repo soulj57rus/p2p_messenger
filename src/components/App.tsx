@@ -4,12 +4,14 @@ import { generateKeyPair, publicKeyToId } from '@/crypto/keys';
 import { connectToSignal } from '@/p2p/connection';
 import { AuthScreen } from './AuthScreen';
 import { MainLayout } from './MainLayout';
+import { UsernameSetup } from './UsernameSetup';
 import QRCode from 'qrcode';
 
 export function App() {
   const [loading, setLoading] = useState(true);
   const [initError, setInitError] = useState<string | null>(null);
   const [showWelcome, setShowWelcome] = useState(false);
+  const [showUsernameSetup, setShowUsernameSetup] = useState(false);
   const [welcomeQr, setWelcomeQr] = useState('');
   const [copied, setCopied] = useState(false);
   const loadKeys = useStore((s) => s.loadKeys);
@@ -41,6 +43,26 @@ export function App() {
     await saveKeys();
     connectToSignal(id);
     if (isNew) {
+      setShowUsernameSetup(true);
+    }
+  };
+
+  const handleUsernameComplete = async () => {
+    setShowUsernameSetup(false);
+    const id = useStore.getState().myId;
+    if (id) {
+      const inviteUrl = `${window.location.origin}${window.location.pathname}?add=${id}`;
+      QRCode.toDataURL(inviteUrl, { width: 200, margin: 2, color: { dark: '#ffffff', light: '#00000000' } })
+        .then(setWelcomeQr)
+        .catch(() => {});
+      setShowWelcome(true);
+    }
+  };
+
+  const handleUsernameSkip = () => {
+    setShowUsernameSetup(false);
+    const id = useStore.getState().myId;
+    if (id) {
       const inviteUrl = `${window.location.origin}${window.location.pathname}?add=${id}`;
       QRCode.toDataURL(inviteUrl, { width: 200, margin: 2, color: { dark: '#ffffff', light: '#00000000' } })
         .then(setWelcomeQr)
@@ -80,7 +102,12 @@ export function App() {
     return <AuthScreen onAuth={handleAuth} onImport={handleImport} onGenerate={handleGenerate} />;
   }
 
+  if (showUsernameSetup) {
+    return <UsernameSetup onComplete={handleUsernameComplete} onSkip={handleUsernameSkip} />;
+  }
+
   if (showWelcome) {
+    const myUsername = useStore.getState().myUsername;
     const inviteUrl = `${window.location.origin}${window.location.pathname}?add=${myId}`;
     return (
       <div style={{
@@ -94,6 +121,13 @@ export function App() {
           <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 8, color: 'var(--text-primary)' }}>
             Аккаунт создан!
           </h2>
+          {myUsername && (
+            <div style={{
+              fontSize: 16, fontWeight: 600, color: 'var(--accent)', marginBottom: 8,
+            }}>
+              @{myUsername}
+            </div>
+          )}
           <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 20 }}>
             Отправьте этот QR-код или ссылку собеседнику
           </p>

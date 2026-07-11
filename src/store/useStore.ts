@@ -10,24 +10,31 @@ export function setSendMessage(fn: typeof sendMessageToPeer) {
 
 interface PeerStore {
   myId: string | null;
+  myUsername: string | null;
   myKeyPair: { publicKey: Uint8Array; secretKey: Uint8Array } | null;
   online: boolean;
   onlinePeers: string[];
   activeChat: string | null;
   chats: Chat[];
+  peerUsernames: Record<string, string>;
 
   setOnline: (v: boolean) => void;
   setOnlinePeers: (peers: string[]) => void;
   setMyId: (id: string) => void;
+  setMyUsername: (username: string | null) => void;
   setMyKeyPair: (kp: { publicKey: Uint8Array; secretKey: Uint8Array }) => void;
   setActiveChat: (id: string | null) => void;
   addOnlinePeer: (id: string) => void;
   removeOnlinePeer: (id: string) => void;
   setPeerOnline: (id: string, online: boolean) => void;
   setChats: (chats: Chat[]) => void;
+  setPeerUsernames: (usernames: Record<string, string>) => void;
+  setPeerUsername: (peerId: string, username: string) => void;
 
   loadKeys: () => Promise<boolean>;
   saveKeys: () => Promise<void>;
+  saveUsername: (username: string) => Promise<void>;
+  resolveUsername: (username: string) => Promise<string | null>;
 
   createChat: (peerId: string, displayName?: string) => Promise<string>;
   sendTextMessage: (peerId: string, text: string, replyTo?: number) => Promise<void>;
@@ -47,18 +54,25 @@ interface PeerStore {
 
 export const useStore = create<PeerStore>((set, get) => ({
   myId: null,
+  myUsername: null,
   myKeyPair: null,
   online: false,
   onlinePeers: [],
   activeChat: null,
   chats: [],
+  peerUsernames: {},
 
   setOnline: (v) => set({ online: v }),
   setOnlinePeers: (peers) => set({ onlinePeers: peers }),
   setMyId: (id) => set({ myId: id }),
+  setMyUsername: (username) => set({ myUsername: username }),
   setMyKeyPair: (kp) => set({ myKeyPair: kp }),
   setActiveChat: (id) => set({ activeChat: id }),
   setChats: (chats) => set({ chats }),
+  setPeerUsernames: (usernames) => set({ peerUsernames: usernames }),
+  setPeerUsername: (peerId, username) => set((s) => ({
+    peerUsernames: { ...s.peerUsernames, [peerId]: username },
+  })),
   addOnlinePeer: (id) => set((s) => ({ onlinePeers: s.onlinePeers.includes(id) ? s.onlinePeers : [...s.onlinePeers, id] })),
   removeOnlinePeer: (id) => set((s) => ({ onlinePeers: s.onlinePeers.filter(p => p !== id) })),
   setPeerOnline: (id, online) => {
@@ -75,14 +89,18 @@ export const useStore = create<PeerStore>((set, get) => ({
       const kp = JSON.parse(stored.keyData);
       const pub = new Uint8Array(kp.publicKey);
       const sec = new Uint8Array(kp.secretKey);
-      set({ myKeyPair: { publicKey: pub, secretKey: sec }, myId: publicKeyToId(pub) });
+      set({
+        myKeyPair: { publicKey: pub, secretKey: sec },
+        myId: publicKeyToId(pub),
+        myUsername: stored.username || null,
+      });
       return true;
     }
     return false;
   },
 
   saveKeys: async () => {
-    const { myKeyPair } = get();
+    const { myKeyPair, myUsername } = get();
     if (!myKeyPair) return;
     await db.keys.put({
       id: 'identity',
@@ -90,9 +108,26 @@ export const useStore = create<PeerStore>((set, get) => ({
         publicKey: Array.from(myKeyPair.publicKey),
         secretKey: Array.from(myKeyPair.secretKey),
       }),
+      username: myUsername || undefined,
       createdAt: Date.now(),
     });
     set({ myId: publicKeyToId(myKeyPair.publicKey) });
+  },
+
+  saveUsername: async (username) => {
+    const { myId } = get();
+    if (!myId) return;
+    await db.keys.update('identity', { username });
+    set({ myUsername: username });
+  },
+
+  resolveUsername: async (username) => {
+    const { peerUsernames } = get();
+    const reverse = Object.entries(peerUsernames);
+    for (const [pid, uname] of reverse) {
+      if (uname === username.toLowerCase()) return pid;
+    }
+    return null;
   },
 
   createChat: async (peerId, displayName) => {

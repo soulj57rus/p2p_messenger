@@ -13,9 +13,11 @@ const server = createServer(app);
 const wss = new WebSocketServer({ server });
 
 const peers = new Map();
+const usernames = new Map();
 
 wss.on('connection', (ws, req) => {
   let peerId = null;
+  let registeredUsername = null;
 
   ws.on('message', (data) => {
     try {
@@ -25,12 +27,81 @@ wss.on('connection', (ws, req) => {
         case 'register': {
           peerId = msg.peerId;
           peers.set(peerId, ws);
-          ws.send(JSON.stringify({ type: 'registered', peerId }));
-          console.log(`[+] Peer registered: ${peerId.slice(0, 16)}...`);
+
+          if (msg.username) {
+            const lower = msg.username.toLowerCase();
+            if (!usernames.has(lower)) {
+              usernames.set(lower, peerId);
+              registeredUsername = lower;
+            }
+          }
+
+          ws.send(JSON.stringify({ type: 'registered', peerId, username: registeredUsername }));
+          console.log(`[+] Peer registered: ${registeredUsername ? '@' + registeredUsername : peerId.slice(0, 16) + '...'}`);
 
           const online = Array.from(peers.keys()).filter(id => id !== peerId);
-          ws.send(JSON.stringify({ type: 'online_peers', peers: online }));
-          broadcast({ type: 'peer_online', peerId }, peerId);
+          const peerUsernames = {};
+          for (const [uname, pid] of usernames) {
+            if (pid !== peerId) peerUsernames[pid] = uname;
+          }
+          ws.send(JSON.stringify({ type: 'online_peers', peers: online, usernames: peerUsernames }));
+          broadcast({ type: 'peer_online', peerId, username: registeredUsername }, peerId);
+          break;
+        }
+
+        case 'set_username': {
+          const newUsername = (msg.username || '').toLowerCase().trim();
+          const usernameRegex = /^[a-z][a-z0-9_]{2,31}$/;
+
+          if (!usernameRegex.test(newUsername)) {
+            ws.send(JSON.stringify({
+              type: 'username_result',
+              ok: false,
+              error: 'Имя должно: 3-32 символа, начинаться с буквы, содержать только a-z, 0-9, _',
+            }));
+            break;
+          }
+
+          if (registeredUsername) {
+            usernames.delete(registeredUsername);
+          }
+
+          if (usernames.has(newUsername)) {
+            ws.send(JSON.stringify({
+              type: 'username_result',
+              ok: false,
+              error: 'Это имя уже занято',
+            }));
+            if (registeredUsername) usernames.set(registeredUsername, peerId);
+            break;
+          }
+
+          usernames.set(newUsername, peerId);
+          registeredUsername = newUsername;
+          ws.send(JSON.stringify({ type: 'username_result', ok: true, username: newUsername }));
+          console.log(`[@] Username set: @${newUsername} -> ${peerId.slice(0, 16)}...`);
+          broadcast({ type: 'username_changed', peerId, username: newUsername }, peerId);
+          break;
+        }
+
+        case 'resolve_username': {
+          const target = (msg.username || '').toLowerCase().trim();
+          const targetPeerId = usernames.get(target);
+          if (targetPeerId) {
+            ws.send(JSON.stringify({
+              type: 'username_resolved',
+              username: target,
+              peerId: targetPeerId,
+              online: peers.has(targetPeerId),
+            }));
+          } else {
+            ws.send(JSON.stringify({
+              type: 'username_resolved',
+              username: target,
+              peerId: null,
+              error: 'Пользователь не найден',
+            }));
+          }
           break;
         }
 
@@ -73,7 +144,10 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => {
     if (peerId) {
       peers.delete(peerId);
-      console.log(`[-] Peer disconnected: ${peerId.slice(0, 16)}...`);
+      if (registeredUsername) {
+        usernames.delete(registeredUsername);
+      }
+      console.log(`[-] Peer disconnected: ${registeredUsername ? '@' + registeredUsername : peerId.slice(0, 16) + '...'}`);
       broadcast({ type: 'peer_offline', peerId }, null);
     }
   });
@@ -88,8 +162,13 @@ function broadcast(msg, exclude) {
   }
 }
 
-app.get('/health', (_, res) => res.json({ ok: true, peers: peers.size }));
+app.get('/health', (_, res) => res.json({ ok: true, peers: peers.size, usernames: usernames.size }));
 app.get('/peers', (_, res) => res.json({ peers: Array.from(peers.keys()) }));
+app.get('/usernames', (_, res) => {
+  const result = {};
+  for (const [name, pid] of usernames) result[name] = pid;
+  res.json(result);
+});
 
 server.listen(PORT, () => {
   console.log(`[!] Signaling server running on port ${PORT}`);

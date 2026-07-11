@@ -2,22 +2,32 @@ import { useEffect, useState, useRef } from 'preact/hooks';
 import { useStore } from '@/store/useStore';
 import { type Chat } from '@/db';
 import { exportKeyPair } from '@/crypto/keys';
+import { sendSetUsername, sendResolveUsername } from '@/p2p/connection';
 import QRCode from 'qrcode';
 
 export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => void }) {
   const myId = useStore((s) => s.myId);
+  const myUsername = useStore((s) => s.myUsername);
   const activeChat = useStore((s) => s.activeChat);
   const setActiveChat = useStore((s) => s.setActiveChat);
   const onlinePeers = useStore((s) => s.onlinePeers);
   const myKeyPair = useStore((s) => s.myKeyPair);
   const createChat = useStore((s) => s.createChat);
   const storeChats = useStore((s) => s.chats);
+  const peerUsernames = useStore((s) => s.peerUsernames);
+  const saveUsername = useStore((s) => s.saveUsername);
   const [addPeerInput, setAddPeerInput] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [exportedKey, setExportedKey] = useState('');
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [copied, setCopied] = useState('');
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  const [editUsername, setEditUsername] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
+  const [usernameError, setUsernameError] = useState('');
+  const [usernameLoading, setUsernameLoading] = useState(false);
+  const [resolving, setResolving] = useState(false);
 
   useEffect(() => {
     if (myKeyPair) {
@@ -42,9 +52,43 @@ export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => 
 
   const handleAddPeer = async () => {
     if (!addPeerInput.trim()) return;
-    const peerId = addPeerInput.trim();
-    await createChat(peerId, peerId.slice(0, 16) + '...');
+    const input = addPeerInput.trim();
+
+    if (input.startsWith('@')) {
+      setResolving(true);
+      const username = input.slice(1).toLowerCase();
+      const result = await sendResolveUsername(username);
+      setResolving(false);
+
+      if (result.peerId) {
+        await createChat(result.peerId, `@${username}`);
+      } else {
+        await createChat(input, input);
+      }
+    } else {
+      await createChat(input, input.slice(0, 16) + '...');
+    }
     setAddPeerInput('');
+  };
+
+  const handleSetUsername = async () => {
+    const val = newUsername.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    if (val.length < 3) { setUsernameError('Минимум 3 символа'); return; }
+    if (val.length > 32) { setUsernameError('Максимум 32 символа'); return; }
+    if (!/^[a-z]/.test(val)) { setUsernameError('Должно начинаться с буквы'); return; }
+    if (!/^[a-z][a-z0-9_]*$/.test(val)) { setUsernameError('Только a-z, 0-9 и _'); return; }
+
+    setUsernameLoading(true);
+    const result = await sendSetUsername(val);
+    setUsernameLoading(false);
+
+    if (result.ok && result.username) {
+      await saveUsername(result.username);
+      setEditUsername(false);
+      setUsernameError('');
+    } else {
+      setUsernameError(result.error || 'Ошибка');
+    }
   };
 
   return (
@@ -89,6 +133,70 @@ export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => 
               <img src={qrDataUrl} alt="QR" style={{ width: 180, height: 180, borderRadius: 12, background: 'var(--bg-input)' }} />
             </div>
           )}
+
+          {/* Username section */}
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Имя пользователя</span>
+              {!editUsername && (
+                <button onClick={() => { setEditUsername(true); setNewUsername(myUsername || ''); setUsernameError(''); }}
+                  style={{
+                    background: 'none', border: 'none', color: 'var(--accent)',
+                    fontSize: 11, cursor: 'pointer', padding: 0,
+                  }}>
+                  {myUsername ? 'Изменить' : 'Установить'}
+                </button>
+              )}
+            </div>
+            {editUsername ? (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                  <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>@</span>
+                  <input
+                    value={newUsername}
+                    onInput={(e) => {
+                      const val = (e.target as HTMLInputElement).value.toLowerCase().replace(/[^a-z0-9_]/g, '');
+                      setNewUsername(val);
+                      setUsernameError('');
+                    }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleSetUsername(); }}
+                    placeholder="username"
+                    maxLength={32}
+                    style={{
+                      flex: 1, padding: '6px 8px', borderRadius: 6,
+                      border: `1px solid ${usernameError ? 'var(--danger)' : 'var(--border-color)'}`,
+                      background: 'var(--bg-input)', color: 'var(--text-primary)',
+                      fontSize: 12, fontFamily: 'monospace', outline: 'none',
+                    }}
+                  />
+                  <button onClick={handleSetUsername} disabled={usernameLoading || !newUsername} style={{
+                    padding: '6px 12px', borderRadius: 6, border: 'none',
+                    background: usernameLoading || !newUsername ? 'var(--text-secondary)' : 'var(--accent)',
+                    color: '#fff', fontSize: 11, cursor: usernameLoading || !newUsername ? 'default' : 'pointer',
+                  }}>
+                    {usernameLoading ? '...' : 'OK'}
+                  </button>
+                  <button onClick={() => { setEditUsername(false); setUsernameError(''); }} style={{
+                    padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border-color)',
+                    background: 'transparent', color: 'var(--text-secondary)',
+                    fontSize: 11, cursor: 'pointer',
+                  }}>
+                    Отмена
+                  </button>
+                </div>
+                {usernameError && <p style={{ fontSize: 11, color: 'var(--danger)', marginTop: 2 }}>{usernameError}</p>}
+              </div>
+            ) : (
+              <div style={{
+                padding: 8, borderRadius: 6, background: 'var(--bg-input)',
+                fontSize: 13, color: myUsername ? 'var(--text-primary)' : 'var(--text-secondary)',
+                fontFamily: myUsername ? 'monospace' : 'inherit',
+              }}>
+                {myUsername ? `@${myUsername}` : 'Не установлено'}
+              </div>
+            )}
+          </div>
+
           <div style={{ marginBottom: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
               <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Ваш ID</span>
@@ -141,13 +249,14 @@ export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => 
           <input
             value={addPeerInput}
             onChange={e => setAddPeerInput((e.target as HTMLInputElement).value)}
-            placeholder="Введите ID собеседника..."
+            placeholder={resolving ? 'Поиск...' : 'ID или @username...'}
+            disabled={resolving}
             style={{
               flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border-color)',
               background: 'var(--bg-input)', color: 'var(--text-primary)',
               fontSize: 13, outline: 'none',
             }}
-            onKeyDown={e => { if (e.key === 'Enter') handleAddPeer(); }}
+            onKeyDown={e => { if (e.key === 'Enter' && !resolving) handleAddPeer(); }}
           />
           <button onClick={handleAddPeer}
             style={{
@@ -166,7 +275,7 @@ export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => 
           <div style={{
             padding: 40, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 14,
           }}>
-            Введите ID собеседника выше, чтобы начать чат
+            Введите ID или @username выше, чтобы начать чат
           </div>
         ) : (
           storeChats.map(chat => (
@@ -197,10 +306,10 @@ export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => 
                   }} />
                 )}
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-primary)' }}>
-                    {chat.displayName}
+                    {peerUsernames[chat.peerId] ? `@${peerUsernames[chat.peerId]}` : chat.displayName}
                   </span>
                   {chat.lastMessageTime && (
                     <span style={{ fontSize: 11, color: 'var(--text-time)' }}>

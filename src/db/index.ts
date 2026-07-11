@@ -32,6 +32,7 @@ export interface Chat {
 export interface StoredKey {
   id: string;
   keyData: string;
+  username?: string;
   createdAt: number;
 }
 
@@ -42,7 +43,7 @@ class MessengerDB extends Dexie {
 
   constructor() {
     super('P2PMessenger');
-    this.version(2).stores({
+    this.version(3).stores({
       messages: '++id, chatId, timestamp, pending',
       chats: 'id, peerId, lastMessageTime',
       keys: 'id',

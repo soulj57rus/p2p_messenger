@@ -13,6 +13,7 @@ export function ChatView({ chatId, onBack, isMobile }: Props) {
   const [input, setInput] = useState('');
   const [chatName, setChatName] = useState('');
   const myId = useStore((s) => s.myId);
+  const peerUsernames = useStore((s) => s.peerUsernames);
   const sendTextMessage = useStore((s) => s.sendTextMessage);
   const sendFileMessage = useStore((s) => s.sendFileMessage);
   const markAsRead = useStore((s) => s.markAsRead);
@@ -123,7 +124,7 @@ export function ChatView({ chatId, onBack, isMobile }: Props) {
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 15, fontWeight: 500 }}>{chatName}</div>
           <div style={{ fontSize: 12, color: onlinePeers.includes(chatId) ? 'var(--online)' : 'var(--text-secondary)' }}>
-            {onlinePeers.includes(chatId) ? 'в сети' : 'не в сети'}
+            {peerUsernames[chatId] ? `@${peerUsernames[chatId]}` : (onlinePeers.includes(chatId) ? 'в сети' : 'не в сети')}
           </div>
         </div>
       </div>
