@@ -1,7 +1,5 @@
-import { useEffect, useState, useRef } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { useStore } from '@/store/useStore';
-import { type Chat } from '@/db';
-import { exportKeyPair } from '@/crypto/keys';
 import { sendSetUsername, sendResolveUsername } from '@/p2p/connection';
 import QRCode from 'qrcode';
 
@@ -11,17 +9,14 @@ export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => 
   const activeChat = useStore((s) => s.activeChat);
   const setActiveChat = useStore((s) => s.setActiveChat);
   const onlinePeers = useStore((s) => s.onlinePeers);
-  const myKeyPair = useStore((s) => s.myKeyPair);
   const createChat = useStore((s) => s.createChat);
   const storeChats = useStore((s) => s.chats);
   const peerUsernames = useStore((s) => s.peerUsernames);
   const saveUsername = useStore((s) => s.saveUsername);
   const [addPeerInput, setAddPeerInput] = useState('');
   const [showSettings, setShowSettings] = useState(false);
-  const [exportedKey, setExportedKey] = useState('');
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [copied, setCopied] = useState('');
-  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const [editUsername, setEditUsername] = useState(false);
   const [newUsername, setNewUsername] = useState('');
@@ -30,19 +25,13 @@ export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => 
   const [resolving, setResolving] = useState(false);
 
   useEffect(() => {
-    if (myKeyPair) {
-      setExportedKey(exportKeyPair(myKeyPair));
-    }
-  }, [myKeyPair]);
-
-  useEffect(() => {
     if (showSettings && myId) {
-      const inviteUrl = `${window.location.origin}${window.location.pathname}?add=${myId}`;
+      const inviteUrl = `${window.location.origin}${window.location.pathname}?add=${myUsername || myId}`;
       QRCode.toDataURL(inviteUrl, { width: 180, margin: 2, color: { dark: '#ffffff', light: '#00000000' } })
         .then(setQrDataUrl)
         .catch(() => {});
     }
-  }, [showSettings, myId]);
+  }, [showSettings, myId, myUsername]);
 
   const handleCopy = async (text: string, label: string) => {
     await navigator.clipboard.writeText(text);
@@ -53,20 +42,16 @@ export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => 
   const handleAddPeer = async () => {
     if (!addPeerInput.trim()) return;
     const input = addPeerInput.trim();
+    const username = input.startsWith('@') ? input.slice(1).toLowerCase() : input.toLowerCase();
 
-    if (input.startsWith('@')) {
-      setResolving(true);
-      const username = input.slice(1).toLowerCase();
-      const result = await sendResolveUsername(username);
-      setResolving(false);
+    setResolving(true);
+    const result = await sendResolveUsername(username);
+    setResolving(false);
 
-      if (result.peerId) {
-        await createChat(result.peerId, `@${username}`);
-      } else {
-        await createChat(input, input);
-      }
-    } else {
-      await createChat(input, input.slice(0, 16) + '...');
+    if (result.peerId) {
+      await createChat(result.peerId, `@${username}`);
+      if (onSelectChat) onSelectChat(result.peerId);
+      else setActiveChat(result.peerId);
     }
     setAddPeerInput('');
   };
@@ -91,15 +76,16 @@ export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => 
     }
   };
 
+  const inviteUrl = `${window.location.origin}${window.location.pathname}?add=${myUsername || myId}`;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Header */}
       <div style={{
         padding: '12px 16px', borderBottom: '1px solid var(--border-color)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         background: 'var(--bg-secondary)',
       }}>
-        <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>P2P Chat</span>
+        <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Secure Chat</span>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <div style={{
             width: 8, height: 8, borderRadius: '50%',
@@ -124,7 +110,6 @@ export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => 
         </div>
       </div>
 
-      {/* Settings panel */}
       {showSettings && (
         <div style={{ padding: 16, borderBottom: '1px solid var(--border-color)', fontSize: 13 }}>
           {qrDataUrl && (
@@ -134,7 +119,6 @@ export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => 
             </div>
           )}
 
-          {/* Username section */}
           <div style={{ marginBottom: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
               <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Имя пользователя</span>
@@ -144,7 +128,7 @@ export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => 
                     background: 'none', border: 'none', color: 'var(--accent)',
                     fontSize: 11, cursor: 'pointer', padding: 0,
                   }}>
-                  {myUsername ? 'Изменить' : 'Установить'}
+                  Изменить
                 </button>
               )}
             </div>
@@ -189,67 +173,40 @@ export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => 
             ) : (
               <div style={{
                 padding: 8, borderRadius: 6, background: 'var(--bg-input)',
-                fontSize: 13, color: myUsername ? 'var(--text-primary)' : 'var(--text-secondary)',
-                fontFamily: myUsername ? 'monospace' : 'inherit',
+                fontSize: 13, color: 'var(--text-primary)', fontFamily: 'monospace',
               }}>
-                {myUsername ? `@${myUsername}` : 'Не установлено'}
+                @{myUsername || 'не установлено'}
               </div>
             )}
           </div>
 
           <div style={{ marginBottom: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-              <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Ваш ID</span>
-              <button onClick={() => {
-                const inviteUrl = `${window.location.origin}${window.location.pathname}?add=${myId}`;
-                handleCopy(inviteUrl, 'link');
-              }} style={{
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Ссылка приглашения</span>
+              <button onClick={() => handleCopy(inviteUrl, 'link')} style={{
                 background: 'none', border: 'none', color: copied === 'link' ? 'var(--online)' : 'var(--accent)',
                 fontSize: 11, cursor: 'pointer', padding: 0,
               }}>
-                {copied === 'link' ? 'Скопировано!' : 'Копировать ссылку'}
+                {copied === 'link' ? 'Скопировано!' : 'Копировать'}
               </button>
             </div>
             <div style={{
               padding: 8, borderRadius: 6, background: 'var(--bg-input)',
-              fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-all',
-              maxHeight: 60, overflow: 'auto', color: 'var(--text-primary)',
+              fontSize: 12, wordBreak: 'break-all',
+              color: 'var(--text-primary)',
             }}>
-              {myId}
-            </div>
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-              <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Приватный ключ</span>
-              <button onClick={() => handleCopy(exportedKey, 'key')} style={{
-                background: 'none', border: 'none', color: copied === 'key' ? 'var(--online)' : 'var(--accent)',
-                fontSize: 11, cursor: 'pointer', padding: 0,
-              }}>
-                {copied === 'key' ? 'Скопировано!' : 'Копировать'}
-              </button>
-            </div>
-            <textarea readOnly value={exportedKey}
-              style={{
-                width: '100%', height: 50, padding: 8, borderRadius: 6,
-                border: '1px solid var(--border-color)',
-                background: 'var(--bg-input)', color: 'var(--text-primary)',
-                fontFamily: 'monospace', fontSize: 10, resize: 'none',
-              }}
-            />
-            <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 4 }}>
-              Сохраните этот ключ для восстановления аккаунта
+              {inviteUrl}
             </div>
           </div>
         </div>
       )}
 
-      {/* Add peer */}
       <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border-color)' }}>
         <div style={{ display: 'flex', gap: 8 }}>
           <input
             value={addPeerInput}
             onChange={e => setAddPeerInput((e.target as HTMLInputElement).value)}
-            placeholder={resolving ? 'Поиск...' : 'ID или @username...'}
+            placeholder={resolving ? 'Поиск...' : 'Имя собеседника...'}
             disabled={resolving}
             style={{
               flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border-color)',
@@ -269,13 +226,12 @@ export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => 
         </div>
       </div>
 
-      {/* Chat list */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {storeChats.length === 0 ? (
           <div style={{
             padding: 40, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 14,
           }}>
-            Введите ID или @username выше, чтобы начать чат
+            Введите имя собеседника выше, чтобы начать чат
           </div>
         ) : (
           storeChats.map(chat => (
@@ -298,7 +254,7 @@ export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => 
                 fontSize: 16, fontWeight: 600, flexShrink: 0,
                 position: 'relative',
               }}>
-                {(chat.displayName || chat.peerId)[0].toUpperCase()}
+                {(peerUsernames[chat.peerId] || chat.displayName || chat.peerId)[0].toUpperCase()}
                 {onlinePeers.includes(chat.peerId) && (
                   <div style={{
                     position: 'absolute', bottom: 0, right: 0, width: 12, height: 12,
@@ -306,7 +262,7 @@ export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => 
                   }} />
                 )}
               </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-primary)' }}>
                     {peerUsernames[chat.peerId] ? `@${peerUsernames[chat.peerId]}` : chat.displayName}

@@ -1,24 +1,21 @@
 import { useEffect, useState } from 'preact/hooks';
 import { useStore } from '@/store/useStore';
-import { generateKeyPair, publicKeyToId } from '@/crypto/keys';
-import { connectToSignal } from '@/p2p/connection';
+import { publicKeyToId } from '@/crypto/keys';
+import { connectToSignal, sendResolveUsername } from '@/p2p/connection';
 import { AuthScreen } from './AuthScreen';
 import { MainLayout } from './MainLayout';
-import { UsernameSetup } from './UsernameSetup';
 import QRCode from 'qrcode';
 
 export function App() {
   const [loading, setLoading] = useState(true);
   const [initError, setInitError] = useState<string | null>(null);
   const [showWelcome, setShowWelcome] = useState(false);
-  const [showUsernameSetup, setShowUsernameSetup] = useState(false);
   const [welcomeQr, setWelcomeQr] = useState('');
   const [copied, setCopied] = useState(false);
   const loadKeys = useStore((s) => s.loadKeys);
-  const saveKeys = useStore((s) => s.saveKeys);
-  const setMyKeyPair = useStore((s) => s.setMyKeyPair);
   const setMyId = useStore((s) => s.setMyId);
   const myId = useStore((s) => s.myId);
+  const myUsername = useStore((s) => s.myUsername);
 
   useEffect(() => {
     (async () => {
@@ -28,6 +25,17 @@ export function App() {
         if (hasKeys) {
           const id = useStore.getState().myId;
           if (id) connectToSignal(id);
+
+          const addParam = new URLSearchParams(window.location.search).get('add');
+          if (addParam) {
+            const state = useStore.getState();
+            if (state.myUsername && addParam === state.myUsername) {
+              window.history.replaceState({}, '', window.location.pathname);
+            } else {
+              handleAddUsername(addParam);
+              return;
+            }
+          }
         }
       } catch (e) {
         setInitError('Failed to load keys');
@@ -36,50 +44,30 @@ export function App() {
     })();
   }, []);
 
-  const handleAuth = async (kp: { publicKey: Uint8Array; secretKey: Uint8Array }, isNew = false) => {
-    const id = publicKeyToId(kp.publicKey);
-    setMyId(id);
-    setMyKeyPair(kp);
-    await saveKeys();
+  const handleAddUsername = async (username: string) => {
+    const clean = username.startsWith('@') ? username.slice(1) : username;
+    const result = await sendResolveUsername(clean);
+    if (result.peerId) {
+      const createChat = useStore.getState().createChat;
+      await createChat(result.peerId, `@${clean}`);
+      useStore.getState().setActiveChat(result.peerId);
+      window.history.replaceState({}, '', window.location.pathname);
+    } else {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  };
+
+  const handleAuth = async () => {
+    const id = useStore.getState().myId;
+    if (!id) return;
+
     connectToSignal(id);
-    if (isNew) {
-      setShowUsernameSetup(true);
-    }
-  };
 
-  const handleUsernameComplete = async () => {
-    setShowUsernameSetup(false);
-    const id = useStore.getState().myId;
-    if (id) {
-      const inviteUrl = `${window.location.origin}${window.location.pathname}?add=${id}`;
-      QRCode.toDataURL(inviteUrl, { width: 200, margin: 2, color: { dark: '#ffffff', light: '#00000000' } })
-        .then(setWelcomeQr)
-        .catch(() => {});
-      setShowWelcome(true);
-    }
-  };
-
-  const handleUsernameSkip = () => {
-    setShowUsernameSetup(false);
-    const id = useStore.getState().myId;
-    if (id) {
-      const inviteUrl = `${window.location.origin}${window.location.pathname}?add=${id}`;
-      QRCode.toDataURL(inviteUrl, { width: 200, margin: 2, color: { dark: '#ffffff', light: '#00000000' } })
-        .then(setWelcomeQr)
-        .catch(() => {});
-      setShowWelcome(true);
-    }
-  };
-
-  const handleImport = async (encoded: string) => {
-    const { importKeyPair } = await import('@/crypto/keys');
-    const kp = importKeyPair(encoded);
-    await handleAuth(kp, false);
-  };
-
-  const handleGenerate = async () => {
-    const kp = generateKeyPair();
-    await handleAuth(kp, true);
+    const inviteUrl = `${window.location.origin}${window.location.pathname}?add=${useStore.getState().myUsername}`;
+    QRCode.toDataURL(inviteUrl, { width: 200, margin: 2, color: { dark: '#ffffff', light: '#00000000' } })
+      .then(setWelcomeQr)
+      .catch(() => {});
+    setShowWelcome(true);
   };
 
   if (loading) {
@@ -99,16 +87,11 @@ export function App() {
   }
 
   if (!myId) {
-    return <AuthScreen onAuth={handleAuth} onImport={handleImport} onGenerate={handleGenerate} />;
-  }
-
-  if (showUsernameSetup) {
-    return <UsernameSetup onComplete={handleUsernameComplete} onSkip={handleUsernameSkip} />;
+    return <AuthScreen onAuth={handleAuth} />;
   }
 
   if (showWelcome) {
-    const myUsername = useStore.getState().myUsername;
-    const inviteUrl = `${window.location.origin}${window.location.pathname}?add=${myId}`;
+    const inviteUrl = `${window.location.origin}${window.location.pathname}?add=${myUsername}`;
     return (
       <div style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -119,7 +102,7 @@ export function App() {
           background: 'var(--bg-secondary)', boxShadow: 'var(--shadow-lg)', textAlign: 'center',
         }}>
           <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 8, color: 'var(--text-primary)' }}>
-            Аккаунт создан!
+            Добро пожаловать!
           </h2>
           {myUsername && (
             <div style={{

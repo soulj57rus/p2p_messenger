@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { db, type Message, type Chat } from '@/db';
-import { generateKeyPair, publicKeyToId, idToPublicKey, encryptMessage, decryptMessage, signMessage } from '@/crypto/keys';
+import { generateKeyPair, publicKeyToId } from '@/crypto/keys';
 
 let sendMessageToPeer: ((peerId: string, data: any) => 'direct' | 'relay' | 'none') | null = null;
 
