@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
-import { generateKeyPair, generateBoxKeyPair } from '@/crypto/keys';
-import { sendSetUsername } from '@/p2p/connection';
+import { generateKeyPair, generateBoxKeyPair, publicKeyToId } from '@/crypto/keys';
+import { connectToSignal, waitForConnection, sendSetUsername } from '@/p2p/connection';
 import { useStore } from '@/store/useStore';
 import { db } from '@/db';
 
@@ -37,15 +37,28 @@ export function AuthScreen({ onAuth }: Props) {
     if (v) { setError(v); return; }
 
     setLoading(true);
+
+    const kp = generateKeyPair();
+    const boxKp = generateBoxKeyPair();
+    const peerId = publicKeyToId(kp.publicKey);
+
+    setMyKeyPair(kp);
+    setMyBoxKeyPair(boxKp);
+    setMyId(peerId);
+    await saveKeys();
+
+    connectToSignal(peerId);
+    const connected = await waitForConnection(8000);
+    if (!connected) {
+      setLoading(false);
+      setError('Нет подключения к серверу');
+      return;
+    }
+
     const result = await sendSetUsername(username);
     setLoading(false);
 
     if (result.ok && result.username) {
-      const kp = generateKeyPair();
-      const boxKp = generateBoxKeyPair();
-      setMyKeyPair(kp);
-      setMyBoxKeyPair(boxKp);
-      await saveKeys();
       await saveUsername(result.username);
       onAuth();
     } else {

@@ -37,6 +37,17 @@ const peerBoxKeys = new Map<string, Uint8Array>();
 let reconnectTimer: any = null;
 let pendingUsernameResolve: ((msg: any) => void) | null = null;
 
+export function waitForConnection(timeout = 10000): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (ws?.readyState === WebSocket.OPEN) { resolve(true); return; }
+    const start = Date.now();
+    const check = setInterval(() => {
+      if (ws?.readyState === WebSocket.OPEN) { clearInterval(check); resolve(true); }
+      if (Date.now() - start > timeout) { clearInterval(check); resolve(false); }
+    }, 100);
+  });
+}
+
 function shouldInitiate(remoteId: string): boolean {
   if (!myPeerId) return false;
   return myPeerId < remoteId;
