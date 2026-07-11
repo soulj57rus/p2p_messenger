@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useState, useRef } from 'preact/hooks';
 import { useStore } from '@/store/useStore';
 import { publicKeyToId } from '@/crypto/keys';
-import { connectToSignal, sendResolveUsername } from '@/p2p/connection';
+import { connectToSignal, waitForConnection, sendResolveUsername } from '@/p2p/connection';
 import { AuthScreen } from './AuthScreen';
 import { MainLayout } from './MainLayout';
 import QRCode from 'qrcode';
@@ -16,24 +16,28 @@ export function App() {
   const setMyId = useStore((s) => s.setMyId);
   const myId = useStore((s) => s.myId);
   const myUsername = useStore((s) => s.myUsername);
+  const pendingAddRef = useRef<string | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
+        const addParam = new URLSearchParams(window.location.search).get('add');
+        if (addParam) pendingAddRef.current = addParam;
+
         const hasKeys = await loadKeys();
         setLoading(false);
         if (hasKeys) {
           const id = useStore.getState().myId;
           if (id) connectToSignal(id);
 
-          const addParam = new URLSearchParams(window.location.search).get('add');
           if (addParam) {
             const state = useStore.getState();
             if (state.myUsername && addParam === state.myUsername) {
+              pendingAddRef.current = null;
               window.history.replaceState({}, '', window.location.pathname);
             } else {
-              handleAddUsername(addParam);
-              return;
+              await waitForConnection(8000);
+              await processAddUsername(addParam);
             }
           }
         }
@@ -44,24 +48,33 @@ export function App() {
     })();
   }, []);
 
-  const handleAddUsername = async (username: string) => {
-    const clean = username.startsWith('@') ? username.slice(1) : username;
+  const processAddUsername = async (addParam: string) => {
+    const clean = addParam.startsWith('@') ? addParam.slice(1) : addParam;
     const result = await sendResolveUsername(clean);
     if (result.peerId) {
       const createChat = useStore.getState().createChat;
       await createChat(result.peerId, `@${clean}`);
       useStore.getState().setActiveChat(result.peerId);
-      window.history.replaceState({}, '', window.location.pathname);
-    } else {
-      window.history.replaceState({}, '', window.location.pathname);
     }
+    pendingAddRef.current = null;
+    window.history.replaceState({}, '', window.location.pathname);
   };
 
   const handleAuth = async () => {
     const id = useStore.getState().myId;
     if (!id) return;
 
-    connectToSignal(id);
+    const addParam = pendingAddRef.current;
+    if (addParam) {
+      const state = useStore.getState();
+      if (state.myUsername && addParam === state.myUsername) {
+        pendingAddRef.current = null;
+        window.history.replaceState({}, '', window.location.pathname);
+      } else {
+        await processAddUsername(addParam);
+        return;
+      }
+    }
 
     const inviteUrl = `${window.location.origin}${window.location.pathname}?add=${useStore.getState().myUsername}`;
     QRCode.toDataURL(inviteUrl, { width: 200, margin: 2, color: { dark: '#ffffff', light: '#00000000' } })

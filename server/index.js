@@ -58,6 +58,8 @@ wss.on('connection', (ws, req) => {
             if (!usernames.has(lower)) {
               usernames.set(lower, peerId);
               registeredUsername = lower;
+            } else {
+              console.log(`[!] Username @${lower} already taken, ${peerId.slice(0, 16)}... registered without username`);
             }
           }
 
