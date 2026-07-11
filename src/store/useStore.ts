@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { db, type Message, type Chat } from '@/db';
 import { generateKeyPair, publicKeyToId } from '@/crypto/keys';
+import { disconnectAll } from '@/p2p/connection';
 
 let sendMessageToPeer: ((peerId: string, data: any) => 'direct' | 'relay' | 'none') | null = null;
 
@@ -35,6 +36,7 @@ interface PeerStore {
   saveKeys: () => Promise<void>;
   saveUsername: (username: string) => Promise<void>;
   resolveUsername: (username: string) => Promise<string | null>;
+  logout: () => Promise<void>;
 
   createChat: (peerId: string, displayName?: string) => Promise<string>;
   sendTextMessage: (peerId: string, text: string, replyTo?: number) => Promise<void>;
@@ -128,6 +130,23 @@ export const useStore = create<PeerStore>((set, get) => ({
       if (uname === username.toLowerCase()) return pid;
     }
     return null;
+  },
+
+  logout: async () => {
+    disconnectAll();
+    await db.keys.clear();
+    await db.chats.clear();
+    await db.messages.clear();
+    set({
+      myId: null,
+      myUsername: null,
+      myKeyPair: null,
+      online: false,
+      onlinePeers: [],
+      activeChat: null,
+      chats: [],
+      peerUsernames: {},
+    });
   },
 
   createChat: async (peerId, displayName) => {

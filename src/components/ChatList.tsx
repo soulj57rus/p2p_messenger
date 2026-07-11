@@ -17,6 +17,7 @@ export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => 
   const [showSettings, setShowSettings] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [copied, setCopied] = useState('');
+  const logout = useStore((s) => s.logout);
 
   const [editUsername, setEditUsername] = useState(false);
   const [newUsername, setNewUsername] = useState('');
@@ -198,6 +199,15 @@ export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => 
               {inviteUrl}
             </div>
           </div>
+
+          <button onClick={logout} style={{
+            width: '100%', padding: '8px 16px', borderRadius: 8,
+            border: '1px solid var(--danger)', background: 'transparent',
+            color: 'var(--danger)', fontSize: 13, fontWeight: 500, cursor: 'pointer',
+            marginTop: 4,
+          }}>
+            Выйти из аккаунта
+          </button>
         </div>
       )}
 
