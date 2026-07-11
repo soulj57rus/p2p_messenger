@@ -1,11 +1,7 @@
 FROM node:18-alpine
-RUN apk add --no-cache openssl
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY server/ ./
-RUN mkdir -p certs && \
-    openssl req -x509 -newkey rsa:2048 -keyout certs/key.pem -out certs/cert.pem \
-    -days 365 -nodes -subj '/CN=localhost' 2>/dev/null
 EXPOSE 3001
 CMD ["node", "index.js"]
