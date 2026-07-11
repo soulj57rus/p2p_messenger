@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { db, type Message, type Chat } from '@/db';
-import { generateKeyPair, publicKeyToId } from '@/crypto/keys';
+import { generateKeyPair, publicKeyToId, generateBoxKeyPair, exportBoxKeyPair, importBoxKeyPair, decryptMessage, boxKeyPairToId } from '@/crypto/keys';
 import { disconnectAll } from '@/p2p/connection';
+import type { BoxKeyPair } from '@/crypto/keys';
 
 let sendMessageToPeer: ((peerId: string, data: any) => 'direct' | 'relay' | 'none') | null = null;
 
@@ -9,10 +10,18 @@ export function setSendMessage(fn: typeof sendMessageToPeer) {
   sendMessageToPeer = fn;
 }
 
+function decodeBase64Key(key: string): Uint8Array {
+  const binary = atob(key);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
 interface PeerStore {
   myId: string | null;
   myUsername: string | null;
   myKeyPair: { publicKey: Uint8Array; secretKey: Uint8Array } | null;
+  myBoxKeyPair: BoxKeyPair | null;
   online: boolean;
   onlinePeers: string[];
   activeChat: string | null;
@@ -24,6 +33,7 @@ interface PeerStore {
   setMyId: (id: string) => void;
   setMyUsername: (username: string | null) => void;
   setMyKeyPair: (kp: { publicKey: Uint8Array; secretKey: Uint8Array }) => void;
+  setMyBoxKeyPair: (kp: BoxKeyPair) => void;
   setActiveChat: (id: string | null) => void;
   addOnlinePeer: (id: string) => void;
   removeOnlinePeer: (id: string) => void;
@@ -58,6 +68,7 @@ export const useStore = create<PeerStore>((set, get) => ({
   myId: null,
   myUsername: null,
   myKeyPair: null,
+  myBoxKeyPair: null,
   online: false,
   onlinePeers: [],
   activeChat: null,
@@ -69,6 +80,7 @@ export const useStore = create<PeerStore>((set, get) => ({
   setMyId: (id) => set({ myId: id }),
   setMyUsername: (username) => set({ myUsername: username }),
   setMyKeyPair: (kp) => set({ myKeyPair: kp }),
+  setMyBoxKeyPair: (kp) => set({ myBoxKeyPair: kp }),
   setActiveChat: (id) => set({ activeChat: id }),
   setChats: (chats) => set({ chats }),
   setPeerUsernames: (usernames) => set({ peerUsernames: usernames }),
@@ -91,8 +103,17 @@ export const useStore = create<PeerStore>((set, get) => ({
       const kp = JSON.parse(stored.keyData);
       const pub = new Uint8Array(kp.publicKey);
       const sec = new Uint8Array(kp.secretKey);
+
+      let boxKp: BoxKeyPair;
+      if (stored.boxKeyData) {
+        boxKp = importBoxKeyPair(stored.boxKeyData);
+      } else {
+        boxKp = generateBoxKeyPair();
+      }
+
       set({
         myKeyPair: { publicKey: pub, secretKey: sec },
+        myBoxKeyPair: boxKp,
         myId: publicKeyToId(pub),
         myUsername: stored.username || null,
       });
@@ -102,7 +123,7 @@ export const useStore = create<PeerStore>((set, get) => ({
   },
 
   saveKeys: async () => {
-    const { myKeyPair, myUsername } = get();
+    const { myKeyPair, myBoxKeyPair, myUsername } = get();
     if (!myKeyPair) return;
     await db.keys.put({
       id: 'identity',
@@ -110,6 +131,7 @@ export const useStore = create<PeerStore>((set, get) => ({
         publicKey: Array.from(myKeyPair.publicKey),
         secretKey: Array.from(myKeyPair.secretKey),
       }),
+      boxKeyData: myBoxKeyPair ? exportBoxKeyPair(myBoxKeyPair) : undefined,
       username: myUsername || undefined,
       createdAt: Date.now(),
     });
@@ -141,6 +163,7 @@ export const useStore = create<PeerStore>((set, get) => ({
       myId: null,
       myUsername: null,
       myKeyPair: null,
+      myBoxKeyPair: null,
       online: false,
       onlinePeers: [],
       activeChat: null,
@@ -273,8 +296,26 @@ export const useStore = create<PeerStore>((set, get) => ({
   },
 
   handleIncomingMessage: async (peerId, data) => {
-    const { myId } = get();
+    const { myId, myBoxKeyPair } = get();
     if (!myId) return;
+
+    if (data.type === 'encrypted' && myBoxKeyPair) {
+      try {
+        const nonce = decodeBase64Key(data.nonce);
+        const ciphertext = decodeBase64Key(data.ciphertext);
+        const senderBoxKey = decodeBase64Key(data.senderBoxKey);
+        const plaintext = decryptMessage(senderBoxKey, myBoxKeyPair.secretKey, nonce, ciphertext);
+        if (plaintext) {
+          data = JSON.parse(new TextDecoder().decode(plaintext));
+        } else {
+          console.error('[CRYPTO] Failed to decrypt message from', peerId.slice(0, 16));
+          return;
+        }
+      } catch (e) {
+        console.error('[CRYPTO] Decrypt error:', e);
+        return;
+      }
+    }
 
     await get().createChat(peerId);
 

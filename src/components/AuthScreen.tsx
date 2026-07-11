@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { generateKeyPair } from '@/crypto/keys';
+import { generateKeyPair, generateBoxKeyPair } from '@/crypto/keys';
 import { sendSetUsername } from '@/p2p/connection';
 import { useStore } from '@/store/useStore';
 import { db } from '@/db';
@@ -15,6 +15,7 @@ export function AuthScreen({ onAuth }: Props) {
   const saveKeys = useStore((s) => s.saveKeys);
   const saveUsername = useStore((s) => s.saveUsername);
   const setMyKeyPair = useStore((s) => s.setMyKeyPair);
+  const setMyBoxKeyPair = useStore((s) => s.setMyBoxKeyPair);
   const setMyId = useStore((s) => s.setMyId);
 
   const validate = (val: string): string | null => {
@@ -41,7 +42,9 @@ export function AuthScreen({ onAuth }: Props) {
 
     if (result.ok && result.username) {
       const kp = generateKeyPair();
+      const boxKp = generateBoxKeyPair();
       setMyKeyPair(kp);
+      setMyBoxKeyPair(boxKp);
       await saveKeys();
       await saveUsername(result.username);
       onAuth();

@@ -1,6 +1,9 @@
 import { useStore, setSendMessage } from '@/store/useStore';
+import { encryptMessage, decryptMessage, boxKeyPairToId } from '@/crypto/keys';
 
-const SIGNAL_URL = import.meta.env.VITE_SIGNAL_URL || 'ws://localhost:3001';
+const SIGNAL_HOST = import.meta.env.VITE_SIGNAL_HOST || location.host;
+const SIGNAL_PATH = import.meta.env.VITE_SIGNAL_PATH || (import.meta.env.VITE_SIGNAL_HOST ? '' : '/ws');
+const SIGNAL_URL = import.meta.env.VITE_SIGNAL_URL || `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${SIGNAL_HOST}${SIGNAL_PATH}`;
 
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -29,6 +32,7 @@ let myPeerId: string | null = null;
 const peerConnections = new Map<string, RTCPeerConnection>();
 const dataChannels = new Map<string, RTCDataChannel>();
 const pendingCandidates = new Map<string, RTCIceCandidate[]>();
+const peerBoxKeys = new Map<string, Uint8Array>();
 
 let reconnectTimer: any = null;
 let pendingUsernameResolve: ((msg: any) => void) | null = null;
@@ -48,7 +52,8 @@ export function connectToSignal(peerId: string) {
   ws.onopen = () => {
     console.log('[WS] Connected to signaling server');
     const store = useStore.getState();
-    ws!.send(JSON.stringify({ type: 'register', peerId, username: store.myUsername }));
+    const boxPublicKey = store.myBoxKeyPair ? boxKeyPairToId(store.myBoxKeyPair) : null;
+    ws!.send(JSON.stringify({ type: 'register', peerId, username: store.myUsername, boxPublicKey }));
     if (reconnectTimer) { clearInterval(reconnectTimer); reconnectTimer = null; }
     setTimeout(async () => {
       const state = useStore.getState();
@@ -87,11 +92,19 @@ function handleSignalMessage(msg: any) {
     case 'online_peers':
       store.setOnlinePeers(msg.peers);
       if (msg.usernames) store.setPeerUsernames(msg.usernames);
+      if (msg.boxKeys) {
+        for (const [pid, key] of Object.entries(msg.boxKeys)) {
+          peerBoxKeys.set(pid, decodeBase64Key(key as string));
+        }
+      }
       break;
 
     case 'peer_online': {
       store.addOnlinePeer(msg.peerId);
       if (msg.username) store.setPeerUsername(msg.peerId, msg.username);
+      if (msg.boxPublicKey) {
+        peerBoxKeys.set(msg.peerId, decodeBase64Key(msg.boxPublicKey));
+      }
       break;
     }
 
@@ -115,6 +128,9 @@ function handleSignalMessage(msg: any) {
 
     case 'username_changed':
       if (msg.peerId) store.setPeerUsername(msg.peerId, msg.username);
+      if (msg.boxPublicKey) {
+        peerBoxKeys.set(msg.peerId, decodeBase64Key(msg.boxPublicKey));
+      }
       break;
 
     case 'offer':
@@ -139,6 +155,35 @@ function sendSignal(data: any) {
   if (ws?.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(data));
   }
+}
+
+function decodeBase64Key(key: string): Uint8Array {
+  const binary = atob(key);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function encodeBase64Key(key: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < key.length; i++) binary += String.fromCharCode(key[i]);
+  return btoa(binary);
+}
+
+export function encryptPayload(data: any, peerId: string): any {
+  const store = useStore.getState();
+  if (!store.myBoxKeyPair) return data;
+  const peerKey = peerBoxKeys.get(peerId);
+  if (!peerKey) return data;
+
+  const plaintext = new TextEncoder().encode(JSON.stringify(data));
+  const { nonce, ciphertext } = encryptMessage(peerKey, store.myBoxKeyPair.secretKey, plaintext);
+  return {
+    type: 'encrypted',
+    nonce: encodeBase64Key(nonce),
+    ciphertext: encodeBase64Key(ciphertext),
+    senderBoxKey: boxKeyPairToId(store.myBoxKeyPair),
+  };
 }
 
 export async function initiateConnection(peerId: string) {
@@ -280,15 +325,17 @@ function setupDataChannel(dc: RTCDataChannel, peerId: string) {
 }
 
 export function sendMessage(peerId: string, data: any): 'direct' | 'relay' | 'none' {
+  const encrypted = encryptPayload(data, peerId);
+
   const dc = dataChannels.get(peerId);
   if (dc?.readyState === 'open') {
-    dc.send(JSON.stringify(data));
+    dc.send(JSON.stringify(encrypted));
     return 'direct';
   }
 
   if (ws?.readyState === WebSocket.OPEN && myPeerId) {
     console.log(`[RELAY] Fallback to server for ${peerId.slice(0, 16)}...`);
-    ws.send(JSON.stringify({ type: 'relay', to: peerId, data }));
+    ws.send(JSON.stringify({ type: 'relay', to: peerId, data: encrypted }));
     return 'relay';
   }
 

@@ -58,3 +58,26 @@ export function decryptMessage(
   const plaintext = nacl.box.open.after(ciphertext, nonce, shared);
   return plaintext || null;
 }
+
+export interface BoxKeyPair {
+  publicKey: Uint8Array;
+  secretKey: Uint8Array;
+}
+
+export function generateBoxKeyPair(): BoxKeyPair {
+  return nacl.box.keyPair();
+}
+
+export function boxKeyPairToId(kp: BoxKeyPair): string {
+  return encodeBase64(kp.publicKey);
+}
+
+export function exportBoxKeyPair(kp: BoxKeyPair): string {
+  const data = { pub: encodeBase64(kp.publicKey), sec: encodeBase64(kp.secretKey) };
+  return encodeBase64(decodeUTF8(JSON.stringify(data)));
+}
+
+export function importBoxKeyPair(encoded: string): BoxKeyPair {
+  const raw = JSON.parse(encodeUTF8(decodeBase64(encoded)));
+  return { publicKey: decodeBase64(raw.pub), secretKey: decodeBase64(raw.sec) };
+}

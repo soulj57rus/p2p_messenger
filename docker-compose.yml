@@ -5,8 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.server
-    ports:
-      - "3001:3001"
+    expose:
+      - "3001"
     environment:
       - PORT=3001
     restart: unless-stopped
@@ -20,10 +20,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
-      args:
-        VITE_SIGNAL_URL: ${VITE_SIGNAL_URL:-ws://localhost:3001}
     ports:
       - "80:80"
+      - "443:443"
     depends_on:
       - signal-server
     restart: unless-stopped

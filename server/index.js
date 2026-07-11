@@ -1,7 +1,14 @@
 import express from 'express';
-import { createServer } from 'http';
+import { createServer as createHttpServer } from 'http';
+import { createServer as createHttpsServer } from 'https';
+import { readFileSync, existsSync } from 'fs';
 import { WebSocketServer } from 'ws';
 import cors from 'cors';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const PORT = process.env.PORT || 3001;
 
@@ -9,11 +16,25 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const server = createServer(app);
+const sslKey = process.env.SSL_KEY || join(__dirname, 'certs', 'key.pem');
+const sslCert = process.env.SSL_CERT || join(__dirname, 'certs', 'cert.pem');
+let server;
+
+if (existsSync(sslKey) && existsSync(sslCert)) {
+  server = createHttpsServer({
+    key: readFileSync(sslKey),
+    cert: readFileSync(sslCert),
+  }, app);
+  console.log('[!] HTTPS mode');
+} else {
+  server = createHttpServer(app);
+  console.log('[!] HTTP mode (generate certs in server/certs/ for HTTPS)');
+}
 const wss = new WebSocketServer({ server });
 
 const peers = new Map();
 const usernames = new Map();
+const boxKeys = new Map();
 
 wss.on('connection', (ws, req) => {
   let peerId = null;
@@ -28,6 +49,10 @@ wss.on('connection', (ws, req) => {
           peerId = msg.peerId;
           peers.set(peerId, ws);
 
+          if (msg.boxPublicKey) {
+            boxKeys.set(peerId, msg.boxPublicKey);
+          }
+
           if (msg.username) {
             const lower = msg.username.toLowerCase();
             if (!usernames.has(lower)) {
@@ -41,11 +66,15 @@ wss.on('connection', (ws, req) => {
 
           const online = Array.from(peers.keys()).filter(id => id !== peerId);
           const peerUsernames = {};
+          const peerBoxKeys = {};
           for (const [uname, pid] of usernames) {
             if (pid !== peerId) peerUsernames[pid] = uname;
           }
-          ws.send(JSON.stringify({ type: 'online_peers', peers: online, usernames: peerUsernames }));
-          broadcast({ type: 'peer_online', peerId, username: registeredUsername }, peerId);
+          for (const [pid, key] of boxKeys) {
+            if (pid !== peerId) peerBoxKeys[pid] = key;
+          }
+          ws.send(JSON.stringify({ type: 'online_peers', peers: online, usernames: peerUsernames, boxKeys: peerBoxKeys }));
+          broadcast({ type: 'peer_online', peerId, username: registeredUsername, boxPublicKey: msg.boxPublicKey || null }, peerId);
           break;
         }
 
@@ -80,7 +109,7 @@ wss.on('connection', (ws, req) => {
           registeredUsername = newUsername;
           ws.send(JSON.stringify({ type: 'username_result', ok: true, username: newUsername }));
           console.log(`[@] Username set: @${newUsername} -> ${peerId.slice(0, 16)}...`);
-          broadcast({ type: 'username_changed', peerId, username: newUsername }, peerId);
+          broadcast({ type: 'username_changed', peerId, username: newUsername, boxPublicKey: boxKeys.get(peerId) || null }, peerId);
           break;
         }
 
@@ -144,6 +173,7 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => {
     if (peerId) {
       peers.delete(peerId);
+      boxKeys.delete(peerId);
       if (registeredUsername) {
         usernames.delete(registeredUsername);
       }
