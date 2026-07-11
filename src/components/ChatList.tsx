@@ -24,6 +24,8 @@ export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => 
   const [usernameError, setUsernameError] = useState('');
   const [usernameLoading, setUsernameLoading] = useState(false);
   const [resolving, setResolving] = useState(false);
+  const [hoveredChat, setHoveredChat] = useState<string | null>(null);
+  const deleteChat = useStore((s) => s.deleteChat);
 
   useEffect(() => {
     if (showSettings && myId) {
@@ -248,6 +250,8 @@ export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => 
             <div
               key={chat.id}
               onClick={() => onSelectChat ? onSelectChat(chat.peerId) : setActiveChat(chat.peerId)}
+              onMouseEnter={() => setHoveredChat(chat.peerId)}
+              onMouseLeave={() => setHoveredChat(null)}
               style={{
                 padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12,
                 cursor: 'pointer', background: chat.peerId === activeChat ? 'var(--bg-active)' : 'transparent',
@@ -301,6 +305,26 @@ export function ChatList({ onSelectChat }: { onSelectChat?: (peerId: string) => 
                 }}>
                   {chat.unread}
                 </div>
+              )}
+              {hoveredChat === chat.peerId && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirm('Удалить чат и все сообщения?')) {
+                      deleteChat(chat.id);
+                    }
+                  }}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: 'var(--text-secondary)', fontSize: 14, padding: 4,
+                    flexShrink: 0, opacity: 0.6,
+                  }}
+                  onMouseOver={e => (e.currentTarget.style.color = 'var(--danger)')}
+                  onMouseOut={e => (e.currentTarget.style.color = 'var(--text-secondary)')}
+                  title="Удалить чат"
+                >
+                  <i class="fas fa-trash-alt" />
+                </button>
               )}
             </div>
           ))

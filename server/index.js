@@ -35,6 +35,7 @@ const wss = new WebSocketServer({ server });
 const peers = new Map();
 const usernames = new Map();
 const boxKeys = new Map();
+const USERNAME_REGEX = /^[a-z][a-z0-9_]{2,31}$/;
 
 wss.on('connection', (ws, req) => {
   let peerId = null;
@@ -54,12 +55,14 @@ wss.on('connection', (ws, req) => {
           }
 
           if (msg.username) {
-            const lower = msg.username.toLowerCase();
-            if (!usernames.has(lower)) {
+            const lower = msg.username.toLowerCase().trim();
+            if (!USERNAME_REGEX.test(lower)) {
+              console.log(`[!] Invalid username @${lower} from ${peerId.slice(0, 16)}...`);
+            } else if (usernames.has(lower)) {
+              console.log(`[!] Username @${lower} already taken, ${peerId.slice(0, 16)}... registered without username`);
+            } else {
               usernames.set(lower, peerId);
               registeredUsername = lower;
-            } else {
-              console.log(`[!] Username @${lower} already taken, ${peerId.slice(0, 16)}... registered without username`);
             }
           }
 
@@ -82,9 +85,8 @@ wss.on('connection', (ws, req) => {
 
         case 'set_username': {
           const newUsername = (msg.username || '').toLowerCase().trim();
-          const usernameRegex = /^[a-z][a-z0-9_]{2,31}$/;
 
-          if (!usernameRegex.test(newUsername)) {
+          if (!USERNAME_REGEX.test(newUsername)) {
             ws.send(JSON.stringify({
               type: 'username_result',
               ok: false,
@@ -93,8 +95,9 @@ wss.on('connection', (ws, req) => {
             break;
           }
 
-          if (registeredUsername) {
-            usernames.delete(registeredUsername);
+          if (newUsername === registeredUsername) {
+            ws.send(JSON.stringify({ type: 'username_result', ok: true, username: newUsername }));
+            break;
           }
 
           if (usernames.has(newUsername)) {
@@ -103,10 +106,12 @@ wss.on('connection', (ws, req) => {
               ok: false,
               error: 'Это имя уже занято',
             }));
-            if (registeredUsername) usernames.set(registeredUsername, peerId);
             break;
           }
 
+          if (registeredUsername) {
+            usernames.delete(registeredUsername);
+          }
           usernames.set(newUsername, peerId);
           registeredUsername = newUsername;
           ws.send(JSON.stringify({ type: 'username_result', ok: true, username: newUsername }));
@@ -196,11 +201,6 @@ function broadcast(msg, exclude) {
 
 app.get('/health', (_, res) => res.json({ ok: true, peers: peers.size, usernames: usernames.size }));
 app.get('/peers', (_, res) => res.json({ peers: Array.from(peers.keys()) }));
-app.get('/usernames', (_, res) => {
-  const result = {};
-  for (const [name, pid] of usernames) result[name] = pid;
-  res.json(result);
-});
 
 server.listen(PORT, () => {
   console.log(`[!] Signaling server running on port ${PORT}`);

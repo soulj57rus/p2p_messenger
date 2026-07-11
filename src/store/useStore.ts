@@ -49,6 +49,7 @@ interface PeerStore {
   logout: () => Promise<void>;
 
   createChat: (peerId: string, displayName?: string) => Promise<string>;
+  deleteChat: (chatId: string) => Promise<void>;
   sendTextMessage: (peerId: string, text: string, replyTo?: number) => Promise<void>;
   sendFileMessage: (peerId: string, file: File) => Promise<void>;
   sendVoiceMessage: (peerId: string, blob: Blob) => Promise<void>;
@@ -190,6 +191,15 @@ export const useStore = create<PeerStore>((set, get) => ({
     const all = await db.chats.orderBy('lastMessageTime').reverse().toArray();
     set({ chats: all });
     return peerId;
+  },
+
+  deleteChat: async (chatId) => {
+    await db.messages.where({ chatId }).delete();
+    await db.chats.delete(chatId);
+    const { activeChat } = get();
+    if (activeChat === chatId) set({ activeChat: null });
+    const all = await db.chats.orderBy('lastMessageTime').reverse().toArray();
+    set({ chats: all });
   },
 
   sendTextMessage: async (peerId, text, replyTo) => {
